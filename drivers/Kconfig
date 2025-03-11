@@ -10,6 +10,8 @@ source "drivers/pcmcia/Kconfig"
 source "drivers/rapidio/Kconfig"
 
 
+source "drivers/hyperhold/Kconfig"
+
 source "drivers/base/Kconfig"
 
 source "drivers/bus/Kconfig"
@@ -236,6 +238,7 @@ source "drivers/counter/Kconfig"
 
 source "drivers/most/Kconfig"
 
+<<<<<<< HEAD
 source "drivers/rkflash/Kconfig"
 
 source "drivers/rk_nand/Kconfig"
@@ -243,5 +246,14 @@ source "drivers/rk_nand/Kconfig"
 source "drivers/headset_observe/Kconfig"
 
 source "drivers/rknpu/Kconfig"
+=======
+source "drivers/accesstokenid/Kconfig"
+
+source "drivers/hooks/Kconfig"
+
+source "drivers/hck/Kconfig"
+
+source "drivers/auth_ctl/Kconfig"
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 endmenu

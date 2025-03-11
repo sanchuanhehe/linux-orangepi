@@ -150,7 +150,10 @@ cti_hp_not_enabled:
 static int cti_disable_hw(struct cti_drvdata *drvdata)
 {
 	struct cti_config *config = &drvdata->config;
+<<<<<<< HEAD
 	struct coresight_device *csdev = drvdata->csdev;
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	spin_lock(&drvdata->spinlock);
 

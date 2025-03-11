@@ -32,6 +32,12 @@
 #include <uapi/linux/magic.h>
 
 #include "dma-buf-sysfs-stats.h"
+<<<<<<< HEAD
+=======
+#include "dma-buf-process-info.h"
+
+static inline int is_dma_buf_file(struct file *);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 struct dma_buf_list {
 	struct list_head head;
@@ -153,6 +159,10 @@ static void dma_buf_release(struct dentry *dentry)
 		dma_resv_fini(dmabuf->resv);
 
 	WARN_ON(!list_empty(&dmabuf->attachments));
+<<<<<<< HEAD
+=======
+	dma_buf_stats_teardown(dmabuf);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	module_put(dmabuf->owner);
 	kfree(dmabuf->name);
 	kfree(dmabuf);
@@ -841,6 +851,10 @@ struct dma_buf *dma_buf_export(const struct dma_buf_export_info *exp_info)
 	file->f_mode |= FMODE_LSEEK;
 	dmabuf->file = file;
 
+	ret = dma_buf_stats_setup(dmabuf);
+	if (ret)
+		goto err_sysfs;
+
 	mutex_init(&dmabuf->lock);
 	INIT_LIST_HEAD(&dmabuf->attachments);
 
@@ -852,6 +866,7 @@ struct dma_buf *dma_buf_export(const struct dma_buf_export_info *exp_info)
 #endif
 	mutex_unlock(&db_list.lock);
 
+<<<<<<< HEAD
 	ret = dma_buf_stats_setup(dmabuf);
 	if (ret)
 		goto err_sysfs;
@@ -859,6 +874,9 @@ struct dma_buf *dma_buf_export(const struct dma_buf_export_info *exp_info)
 	if (IS_ENABLED(CONFIG_RK_DMABUF_DEBUG))
 		dma_buf_set_default_name(dmabuf);
 
+=======
+	init_dma_buf_task_info(dmabuf);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	return dmabuf;
 
 err_sysfs:
@@ -1633,8 +1651,10 @@ static int dma_buf_debug_show(struct seq_file *s, void *unused)
 		return ret;
 
 	seq_puts(s, "\nDma-buf Objects:\n");
-	seq_printf(s, "%-8s\t%-8s\t%-8s\t%-8s\texp_name\t%-8s\n",
-		   "size", "flags", "mode", "count", "ino");
+	seq_printf(s, "%-8s\t%-8s\t%-8s\t%-8s\texp_name\t%-8s\t"
+		   "%-16s\t%-16s\t%-16s\n",
+		   "size", "flags", "mode", "count", "ino",
+		   "buf_name", "exp_pid",  "exp_task_comm");
 
 	list_for_each_entry(buf_obj, &db_list.head, list_node) {
 
@@ -1642,15 +1662,26 @@ static int dma_buf_debug_show(struct seq_file *s, void *unused)
 		if (ret)
 			goto error_unlock;
 
+<<<<<<< HEAD
 		spin_lock(&buf_obj->name_lock);
 		seq_printf(s, "%08zu\t%08x\t%08x\t%08ld\t%s\t%08lu\t%s\n",
+=======
+		seq_printf(s, "%08zu\t%08x\t%08x\t%08ld\t%s\t%08lu\t%s\t"
+			   "%-16d\t%-16s\n",
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 				buf_obj->size,
 				buf_obj->file->f_flags, buf_obj->file->f_mode,
 				file_count(buf_obj->file),
 				buf_obj->exp_name,
 				file_inode(buf_obj->file)->i_ino,
+<<<<<<< HEAD
 				buf_obj->name ?: "");
 		spin_unlock(&buf_obj->name_lock);
+=======
+				buf_obj->name ?: "NULL",
+				dma_buf_exp_pid(buf_obj),
+				dma_buf_exp_task_comm(buf_obj) ?: "NULL");
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 		robj = buf_obj->resv;
 		while (true) {
@@ -1731,6 +1762,7 @@ static int dma_buf_init_debugfs(void)
 		err = PTR_ERR(d);
 	}
 
+	dma_buf_process_info_init_debugfs(dma_buf_debugfs_dir);
 	return err;
 }
 
@@ -1748,6 +1780,19 @@ static inline void dma_buf_uninit_debugfs(void)
 }
 #endif
 
+#ifdef CONFIG_DMABUF_PROCESS_INFO
+struct dma_buf *get_dma_buf_from_file(struct file *f)
+{
+	if (IS_ERR_OR_NULL(f))
+		return NULL;
+
+	if (!is_dma_buf_file(f))
+		return NULL;
+
+	return f->private_data;
+}
+#endif /* CONFIG_DMABUF_PROCESS_INFO */
+
 static int __init dma_buf_init(void)
 {
 	int ret;
@@ -1763,6 +1808,7 @@ static int __init dma_buf_init(void)
 	mutex_init(&db_list.lock);
 	INIT_LIST_HEAD(&db_list.head);
 	dma_buf_init_debugfs();
+	dma_buf_process_info_init_procfs();
 	return 0;
 }
 subsys_initcall(dma_buf_init);
@@ -1772,5 +1818,9 @@ static void __exit dma_buf_deinit(void)
 	dma_buf_uninit_debugfs();
 	kern_unmount(dma_buf_mnt);
 	dma_buf_uninit_sysfs_statistics();
+<<<<<<< HEAD
+=======
+	dma_buf_process_info_uninit_procfs();
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 __exitcall(dma_buf_deinit);

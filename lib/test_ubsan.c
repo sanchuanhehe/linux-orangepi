@@ -103,12 +103,15 @@ static const test_ubsan_fp test_ubsan_array[] = {
 	test_ubsan_out_of_bounds,
 	test_ubsan_load_invalid_value,
 	test_ubsan_misaligned_access,
+<<<<<<< HEAD
 };
 
 /* Excluded because they Oops the module. */
 static const test_ubsan_fp skip_ubsan_array[] = {
 	test_ubsan_divrem_overflow,
 	test_ubsan_null_ptr_deref,
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 };
 
 static int __init test_ubsan_init(void)

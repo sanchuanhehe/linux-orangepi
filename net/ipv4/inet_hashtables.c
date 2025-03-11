@@ -16,6 +16,7 @@
 #include <linux/wait.h>
 #include <linux/vmalloc.h>
 #include <linux/memblock.h>
+#include <linux/hck/lite_hck_inet.h>
 
 #include <net/addrconf.h>
 #include <net/inet_connection_sock.h>
@@ -52,6 +53,14 @@ static u32 sk_ehashfn(const struct sock *sk)
 				     &sk->sk_v6_rcv_saddr, sk->sk_num,
 				     &sk->sk_v6_daddr, sk->sk_dport);
 #endif
+
+	if (sk->sk_family == AF_NINET) {
+		u32 ret = 0;
+
+		CALL_HCK_LITE_HOOK(nip_ninet_ehashfn_lhck, sk, &ret);
+		return ret;
+	}
+
 	return inet_ehashfn(sock_net(sk),
 			    sk->sk_rcv_saddr, sk->sk_num,
 			    sk->sk_daddr, sk->sk_dport);
@@ -593,7 +602,7 @@ bool inet_ehash_nolisten(struct sock *sk, struct sock *osk, bool *found_dup_sk)
 	if (ok) {
 		sock_prot_inuse_add(sock_net(sk), sk->sk_prot, 1);
 	} else {
-		percpu_counter_inc(sk->sk_prot->orphan_count);
+		this_cpu_inc(*sk->sk_prot->orphan_count);
 		inet_sk_set_state(sk, TCP_CLOSE);
 		sock_set_flag(sk, SOCK_DEAD);
 		inet_csk_destroy_sock(sk);
@@ -747,17 +756,7 @@ int __inet_hash_connect(struct inet_timewait_death_row *death_row,
 	u32 index;
 
 	if (port) {
-		head = &hinfo->bhash[inet_bhashfn(net, port,
-						  hinfo->bhash_size)];
-		tb = inet_csk(sk)->icsk_bind_hash;
-		spin_lock_bh(&head->lock);
-		if (sk_head(&tb->owners) == sk && !sk->sk_bind_node.next) {
-			inet_ehash_nolisten(sk, NULL, NULL);
-			spin_unlock_bh(&head->lock);
-			return 0;
-		}
-		spin_unlock(&head->lock);
-		/* No definite answer... Walk to established hash table */
+		local_bh_disable();
 		ret = check_established(death_row, sk, port, NULL);
 		local_bh_enable();
 		return ret;
@@ -777,7 +776,10 @@ int __inet_hash_connect(struct inet_timewait_death_row *death_row,
 
 	offset = READ_ONCE(table_perturb[index]) + (port_offset >> 32);
 	offset %= remaining;
+<<<<<<< HEAD
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	/* In first pass we try ports of @low parity.
 	 * inet_csk_get_port() does the opposite choice.
 	 */

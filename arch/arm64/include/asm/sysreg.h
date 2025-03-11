@@ -109,8 +109,14 @@
 #define SB_BARRIER_INSN			__SYS_BARRIER_INSN(0, 7, 31)
 
 #define SYS_DC_ISW			sys_insn(1, 0, 7, 6, 2)
+#define SYS_DC_IGSW			sys_insn(1, 0, 7, 6, 4)
+#define SYS_DC_IGDSW			sys_insn(1, 0, 7, 6, 6)
 #define SYS_DC_CSW			sys_insn(1, 0, 7, 10, 2)
+#define SYS_DC_CGSW			sys_insn(1, 0, 7, 10, 4)
+#define SYS_DC_CGDSW			sys_insn(1, 0, 7, 10, 6)
 #define SYS_DC_CISW			sys_insn(1, 0, 7, 14, 2)
+#define SYS_DC_CIGSW			sys_insn(1, 0, 7, 14, 4)
+#define SYS_DC_CIGDSW			sys_insn(1, 0, 7, 14, 6)
 
 /*
  * System registers, organised loosely by encoding but grouped together
@@ -753,6 +759,21 @@
 #define ID_AA64ISAR1_GPA_ARCHITECTED		0x1
 #define ID_AA64ISAR1_GPI_NI			0x0
 #define ID_AA64ISAR1_GPI_IMP_DEF		0x1
+#define ID_AA64ISAR2_CLEARBHB_SHIFT	28
+
+/* id_aa64isar2 */
+#define ID_AA64ISAR2_RPRES_SHIFT	4
+#define ID_AA64ISAR2_WFXT_SHIFT		0
+
+#define ID_AA64ISAR2_RPRES_8BIT		0x0
+#define ID_AA64ISAR2_RPRES_12BIT	0x1
+/*
+ * Value 0x1 has been removed from the architecture, and is
+ * reserved, but has not yet been removed from the ARM ARM
+ * as of ARM DDI 0487G.b.
+ */
+#define ID_AA64ISAR2_WFXT_NI		0x0
+#define ID_AA64ISAR2_WFXT_SUPPORTED	0x2
 
 /* id_aa64isar2 */
 #define ID_AA64ISAR2_CLEARBHB_SHIFT	28

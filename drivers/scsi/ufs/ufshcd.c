@@ -3476,7 +3476,7 @@ int ufshcd_read_string_desc(struct ufs_hba *hba, u8 desc_index,
 		 */
 		ret = utf16s_to_utf8s(uc_str->uc,
 				      uc_str->len - QUERY_DESC_HDR_SIZE,
-				      UTF16_BIG_ENDIAN, str, ascii_len);
+				      UTF16_BIG_ENDIAN, str, ascii_len - 1);
 
 		/* replace non-printable or non-ASCII characters with spaces */
 		for (i = 0; i < ret; i++)
@@ -6358,6 +6358,7 @@ static irqreturn_t ufshcd_check_errors(struct ufs_hba *hba, u32 intr_status)
  */
 static irqreturn_t ufshcd_tmc_handler(struct ufs_hba *hba)
 {
+<<<<<<< HEAD
 	struct request **tmf_rqs = ufs_hba_add_info(hba)->tmf_rqs;
 	unsigned long flags, pending, issued;
 	irqreturn_t ret = IRQ_NONE;
@@ -6368,12 +6369,26 @@ static irqreturn_t ufshcd_tmc_handler(struct ufs_hba *hba)
 	issued = hba->outstanding_tasks & ~pending;
 	for_each_set_bit(tag, &issued, hba->nutmrs) {
 		struct request *req = tmf_rqs[tag];
+=======
+	unsigned long pending, issued;
+	irqreturn_t ret = IRQ_NONE;
+	int tag;
+
+	pending = ufshcd_readl(hba, REG_UTP_TASK_REQ_DOOR_BELL);
+
+	issued = hba->outstanding_tasks & ~pending;
+	for_each_set_bit(tag, &issued, hba->nutmrs) {
+		struct request *req = hba->tmf_rqs[tag];
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		struct completion *c = req->end_io_data;
 
 		complete(c);
 		ret = IRQ_HANDLED;
 	}
+<<<<<<< HEAD
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	return ret;
 }
@@ -6501,7 +6516,11 @@ static int __ufshcd_issue_tm_cmd(struct ufs_hba *hba,
 	spin_lock_irqsave(host->host_lock, flags);
 
 	task_tag = req->tag;
+<<<<<<< HEAD
 	tmf_rqs[req->tag] = req;
+=======
+	hba->tmf_rqs[req->tag] = req;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	treq->req_header.dword_0 |= cpu_to_be32(task_tag);
 
 	memcpy(hba->utmrdl_base_addr + task_tag, treq, sizeof(*treq));
@@ -6540,7 +6559,11 @@ static int __ufshcd_issue_tm_cmd(struct ufs_hba *hba,
 	}
 
 	spin_lock_irqsave(hba->host->host_lock, flags);
+<<<<<<< HEAD
 	tmf_rqs[req->tag] = NULL;
+=======
+	hba->tmf_rqs[req->tag] = NULL;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	__clear_bit(task_tag, &hba->outstanding_tasks);
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
 
@@ -9393,9 +9416,15 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 		err = PTR_ERR(hba->tmf_queue);
 		goto free_tmf_tag_set;
 	}
+<<<<<<< HEAD
 	*tmf_rqs = devm_kcalloc(hba->dev, hba->nutmrs, sizeof(**tmf_rqs),
 				GFP_KERNEL);
 	if (!*tmf_rqs) {
+=======
+	hba->tmf_rqs = devm_kcalloc(hba->dev, hba->nutmrs,
+				    sizeof(*hba->tmf_rqs), GFP_KERNEL);
+	if (!hba->tmf_rqs) {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		err = -ENOMEM;
 		goto free_tmf_queue;
 	}
@@ -9485,5 +9514,6 @@ module_exit(ufshcd_core_exit);
 MODULE_AUTHOR("Santosh Yaragnavi <santosh.sy@samsung.com>");
 MODULE_AUTHOR("Vinayak Holikatti <h.vinayak@samsung.com>");
 MODULE_DESCRIPTION("Generic UFS host controller driver Core");
+MODULE_SOFTDEP("pre: governor_simpleondemand");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(UFSHCD_DRIVER_VERSION);

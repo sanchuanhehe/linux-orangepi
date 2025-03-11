@@ -68,6 +68,9 @@ obj-$(CONFIG_CONNECTOR)		+= connector/
 obj-$(CONFIG_FB_I810)           += video/fbdev/i810/
 obj-$(CONFIG_FB_INTEL)          += video/fbdev/intelfb/
 
+# Hyperhold driver
+obj-$(CONFIG_HYPERHOLD)		+= hyperhold/
+
 obj-$(CONFIG_PARPORT)		+= parport/
 obj-$(CONFIG_NVM)		+= lightnvm/
 obj-y				+= base/ block/ misc/ mfd/ nfc/
@@ -182,6 +185,7 @@ obj-$(CONFIG_NVMEM)		+= nvmem/
 obj-$(CONFIG_FPGA)		+= fpga/
 obj-$(CONFIG_FSI)		+= fsi/
 obj-$(CONFIG_TEE)		+= tee/
+obj-$(CONFIG_AUTHORITY_CTRL)	+= auth_ctl/
 obj-$(CONFIG_MULTIPLEXER)	+= mux/
 obj-$(CONFIG_UNISYS_VISORBUS)	+= visorbus/
 obj-$(CONFIG_SIOX)		+= siox/
@@ -189,7 +193,13 @@ obj-$(CONFIG_GNSS)		+= gnss/
 obj-$(CONFIG_INTERCONNECT)	+= interconnect/
 obj-$(CONFIG_COUNTER)		+= counter/
 obj-$(CONFIG_MOST)		+= most/
+<<<<<<< HEAD
 obj-$(CONFIG_RK_FLASH)		+= rkflash/
 obj-$(CONFIG_RK_HEADSET)	+= headset_observe/
 obj-$(CONFIG_RK_NAND)		+= rk_nand/
 obj-$(CONFIG_ROCKCHIP_RKNPU)	+= rknpu/
+=======
+obj-$(CONFIG_ACCESS_TOKENID)	+= accesstokenid/
+obj-$(CONFIG_VENDOR_HOOKS)	+= hooks/
+obj-$(CONFIG_HCK_VENDOR_HOOKS)	+= hck/
+>>>>>>> ohos/OpenHarmony-5.0.2-Release

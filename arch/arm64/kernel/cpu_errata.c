@@ -346,6 +346,7 @@ static const struct midr_range erratum_1463225[] = {
 };
 #endif
 
+<<<<<<< HEAD
 #ifdef CONFIG_ARM64_WORKAROUND_TSB_FLUSH_FAILURE
 static const struct midr_range tsb_flush_fail_cpus[] = {
 #ifdef CONFIG_ARM64_ERRATUM_2067961
@@ -358,6 +359,8 @@ static const struct midr_range tsb_flush_fail_cpus[] = {
 };
 #endif	/* CONFIG_ARM64_WORKAROUND_TSB_FLUSH_FAILURE */
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #ifdef CONFIG_ARM64_ERRATUM_1742098
 static struct midr_range broken_aarch32_aes[] = {
 	MIDR_RANGE(MIDR_CORTEX_A57, 0, 1, 0xf, 0xf),
@@ -559,6 +562,7 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 				  1, 0),
 	},
 #endif
+<<<<<<< HEAD
 #ifdef CONFIG_ARM64_WORKAROUND_TSB_FLUSH_FAILURE
 	{
 		.desc = "ARM erratum 2067961 or 2054223",
@@ -566,6 +570,8 @@ const struct arm64_cpu_capabilities arm64_errata[] = {
 		ERRATA_MIDR_RANGE_LIST(tsb_flush_fail_cpus),
 	},
 #endif
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #ifdef CONFIG_ARM64_ERRATUM_2457168
 	{
 		.desc = "ARM erratum 2457168",

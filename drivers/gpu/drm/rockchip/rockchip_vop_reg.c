@@ -673,8 +673,13 @@ static const struct vop_win_phy rk3399_win01_data = {
 	.fmt_yuyv = VOP_REG(RK3288_WIN0_CTRL0, 0x1, 17),
 	.csc_mode = VOP_REG_VER(RK3288_WIN0_CTRL0, 0x3, 10, 3, 2, -1),
 	.rb_swap = VOP_REG(RK3288_WIN0_CTRL0, 0x1, 12),
+<<<<<<< HEAD
 	.xmirror = VOP_REG_VER(RK3368_WIN0_CTRL0, 0x1, 21, 3, 2, -1),
 	.ymirror = VOP_REG_VER(RK3368_WIN0_CTRL0, 0x1, 22, 3, 2, -1),
+=======
+	.x_mir_en = VOP_REG(RK3288_WIN0_CTRL0, 0x1, 21),
+	.y_mir_en = VOP_REG(RK3288_WIN0_CTRL0, 0x1, 22),
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	.act_info = VOP_REG(RK3288_WIN0_ACT_INFO, 0x1fff1fff, 0),
 	.dsp_info = VOP_REG(RK3288_WIN0_DSP_INFO, 0x0fff0fff, 0),
 	.dsp_st = VOP_REG(RK3288_WIN0_DSP_ST, 0x1fff1fff, 0),
@@ -682,15 +687,22 @@ static const struct vop_win_phy rk3399_win01_data = {
 	.uv_mst = VOP_REG(RK3288_WIN0_CBR_MST, 0xffffffff, 0),
 	.yrgb_vir = VOP_REG(RK3288_WIN0_VIR, 0x3fff, 0),
 	.uv_vir = VOP_REG(RK3288_WIN0_VIR, 0x3fff, 16),
+<<<<<<< HEAD
 	.src_alpha_ctl = VOP_REG(RK3288_WIN0_SRC_ALPHA_CTRL, 0xffff, 0),
 	.global_alpha_val = VOP_REG(RK3288_WIN0_SRC_ALPHA_CTRL, 0xff, 16),
 	.dst_alpha_ctl = VOP_REG(RK3288_WIN0_DST_ALPHA_CTRL, 0xffffffff, 0),
 	.channel = VOP_REG_VER(RK3288_WIN0_CTRL2, 0xff, 0, 3, 8, 8),
 	.color_key = VOP_REG(RK3288_WIN0_COLOR_KEY, 0x3fffffff, 0),
 	.color_key_en = VOP_REG(RK3288_WIN0_COLOR_KEY, 0x1, 31),
+=======
+	.src_alpha_ctl = VOP_REG(RK3288_WIN0_SRC_ALPHA_CTRL, 0xff, 0),
+	.dst_alpha_ctl = VOP_REG(RK3288_WIN0_DST_ALPHA_CTRL, 0xff, 0),
+	.channel = VOP_REG(RK3288_WIN0_CTRL2, 0xff, 0),
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 };
 
 static const struct vop_win_data rk3399_vop_win_data[] = {
+<<<<<<< HEAD
 	{ .base = 0x00, .phy = &rk3399_win01_data, .csc = &rk3399_win0_csc,
 	  .format_modifiers = format_modifiers_afbc,
 	  .type = DRM_PLANE_TYPE_PRIMARY,
@@ -711,6 +723,26 @@ static const struct vop_win_data rk3399_vop_win_data[] = {
 	  .feature = WIN_FEATURE_AFBDC,
 	  .area = rk3368_area_data,
 	  .area_size = ARRAY_SIZE(rk3368_area_data), },
+=======
+	{ .base = 0x00, .phy = &rk3399_win01_data,
+	  .type = DRM_PLANE_TYPE_PRIMARY },
+	{ .base = 0x40, .phy = &rk3368_win01_data,
+	  .type = DRM_PLANE_TYPE_OVERLAY },
+	{ .base = 0x00, .phy = &rk3368_win23_data,
+	  .type = DRM_PLANE_TYPE_OVERLAY },
+	{ .base = 0x50, .phy = &rk3368_win23_data,
+	  .type = DRM_PLANE_TYPE_CURSOR },
+};
+
+static const struct vop_afbc rk3399_vop_afbc = {
+	.rstn = VOP_REG(RK3399_AFBCD0_CTRL, 0x1, 3),
+	.enable = VOP_REG(RK3399_AFBCD0_CTRL, 0x1, 0),
+	.win_sel = VOP_REG(RK3399_AFBCD0_CTRL, 0x3, 1),
+	.format = VOP_REG(RK3399_AFBCD0_CTRL, 0x1f, 16),
+	.hreg_block_split = VOP_REG(RK3399_AFBCD0_CTRL, 0x1, 21),
+	.hdr_ptr = VOP_REG(RK3399_AFBCD0_HDR_PTR, 0xffffffff, 0),
+	.pic_size = VOP_REG(RK3399_AFBCD0_PIC_SIZE, 0xffffffff, 0),
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 };
 
 static const struct vop_data rk3399_vop_big = {

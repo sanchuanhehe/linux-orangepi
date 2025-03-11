@@ -976,7 +976,9 @@ union bpf_attr {
  * 		performed again, if the helper is used in combination with
  * 		direct packet access.
  * 	Return
- * 		0 on success, or a negative error in case of failure.
+ * 		0 on success, or a negative error in case of failure. Positive
+ * 		error indicates a potential drop or congestion in the target
+ * 		device. The particular positive error codes are not defined.
  *
  * u64 bpf_get_current_pid_tgid(void)
  * 	Return
@@ -3422,6 +3424,8 @@ union bpf_attr {
  * long bpf_get_task_stack(struct task_struct *task, void *buf, u32 size, u64 flags)
  *	Description
  *		Return a user or a kernel stack in bpf program provided buffer.
+ *		Note: the user stack will only be populated if the *task* is
+ *		the current task; all other tasks will return -EOPNOTSUPP.
  *		To achieve this, the helper needs *task*, which is a valid
  *		pointer to **struct task_struct**. To store the stacktrace, the
  *		bpf program provides *buf* with a nonnegative *size*.
@@ -3433,6 +3437,7 @@ union bpf_attr {
  *
  *		**BPF_F_USER_STACK**
  *			Collect a user space stack instead of a kernel stack.
+ *			The *task* must be the current task.
  *		**BPF_F_USER_BUILD_ID**
  *			Collect buildid+offset instead of ips for user stack,
  *			only valid if **BPF_F_USER_STACK** is also specified.
@@ -3742,6 +3747,26 @@ union bpf_attr {
  * 	Return
  * 		The helper returns **TC_ACT_REDIRECT** on success or
  * 		**TC_ACT_SHOT** on error.
+ *
+ * int bpf_sock_tcp_send_reset(struct sk_buff *skb)
+ * 	Description
+ * 		Redirect If Netfirewall intercepts socket TCP interception,
+ * 		we need to actively send a reset packet to disconnect the current TCP connection.
+ * 	Return
+ * 		The helper returns Send packet reset sucess.
+ *
+ * int bpf_sock_destroy(struct sk_buff *skb)
+ * 	Description
+ * 		Destroy the given socket with ECONNABORTED error code.
+ * 		The function expects a non-NULL pointer to a socket, and invokes the
+ * 		protocol specific socket destroy handlers.
+ *
+ * 		The helper can only be called from BPF contexts that have acquired the socket
+ * 		locks.
+ * 	Return
+ * 		On error, may return EPROTONOSUPPORT, EINVAL.
+ * 		EPROTONOSUPPORT if protocol specific destroy handler is not supported.
+ * 		0 otherwise
  */
 #define __BPF_FUNC_MAPPER(FN)		\
 	FN(unspec),			\
@@ -3900,6 +3925,8 @@ union bpf_attr {
 	FN(per_cpu_ptr),		\
 	FN(this_cpu_ptr),		\
 	FN(redirect_peer),		\
+	FN(sock_tcp_send_reset),	\
+	FN(bpf_sock_destroy),		\
 	/* */
 
 /* integer value in 'imm' field of BPF_CALL instruction selects which helper

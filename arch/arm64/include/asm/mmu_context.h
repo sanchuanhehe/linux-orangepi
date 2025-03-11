@@ -155,7 +155,11 @@ static inline void __nocfi cpu_replace_ttbr1(pgd_t *pgdp)
 		ttbr1 |= TTBR_CNP_BIT;
 	}
 
+<<<<<<< HEAD
 	replace_phys = (void *)__pa_function(idmap_cpu_replace_ttbr1);
+=======
+	replace_phys = (void *)__pa_symbol(function_nocfi(idmap_cpu_replace_ttbr1));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	cpu_install_idmap();
 	replace_phys(ttbr1);

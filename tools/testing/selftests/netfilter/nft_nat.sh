@@ -404,6 +404,11 @@ EOF
 	echo SERVER-$family | ip netns exec "$ns1" timeout 5 socat -u STDIN TCP-LISTEN:2000 &
 	sc_s=$!
 
+<<<<<<< HEAD
+=======
+	sleep 1
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	result=$(ip netns exec "$ns0" timeout 1 socat TCP:$daddr:2000 STDOUT)
 
 	if [ "$result" = "SERVER-inet" ];then

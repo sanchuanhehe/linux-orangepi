@@ -17,6 +17,7 @@
 #include <crypto/sha.h>
 #include <linux/fsverity.h>
 #include <linux/mempool.h>
+#include <linux/code_sign.h>
 
 struct ahash_request;
 
@@ -75,6 +76,11 @@ struct fsverity_info {
 	u8 root_hash[FS_VERITY_MAX_DIGEST_SIZE];
 	u8 file_digest[FS_VERITY_MAX_DIGEST_SIZE];
 	const struct inode *inode;
+#ifdef CONFIG_SECURITY_CODE_SIGN
+	struct cs_info fcs_info;
+	u64 verified_data_size;
+	int cert_type;
+#endif
 };
 
 /* Arbitrary limit to bound the kmalloc() size.  Can be changed. */
@@ -86,6 +92,8 @@ struct fsverity_info {
 /* hash_algs.c */
 
 extern struct fsverity_hash_alg fsverity_hash_algs[];
+
+extern int g_fsverity_hash_algs_num;
 
 struct fsverity_hash_alg *fsverity_get_hash_alg(const struct inode *inode,
 						unsigned int num);
@@ -119,7 +127,8 @@ int fsverity_init_merkle_tree_params(struct merkle_tree_params *params,
 				     const struct inode *inode,
 				     unsigned int hash_algorithm,
 				     unsigned int log_blocksize,
-				     const u8 *salt, size_t salt_size);
+				     const u8 *salt, size_t salt_size,
+				     u64 data_size);
 
 struct fsverity_info *fsverity_create_info(const struct inode *inode,
 					   struct fsverity_descriptor *desc,
@@ -139,14 +148,26 @@ void __init fsverity_exit_info_cache(void);
 /* signature.c */
 
 #ifdef CONFIG_FS_VERITY_BUILTIN_SIGNATURES
+<<<<<<< HEAD
 int fsverity_verify_signature(const struct fsverity_info *vi,
 			      const u8 *signature, size_t sig_size);
+=======
+int fsverity_verify_signature(struct fsverity_info *vi,
+			      const struct fsverity_descriptor *desc,
+			      size_t desc_size);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 int __init fsverity_init_signature(void);
 #else /* !CONFIG_FS_VERITY_BUILTIN_SIGNATURES */
 static inline int
+<<<<<<< HEAD
 fsverity_verify_signature(const struct fsverity_info *vi,
 			  const u8 *signature, size_t sig_size)
+=======
+fsverity_verify_signature(struct fsverity_info *vi,
+			  const struct fsverity_descriptor *desc,
+			  size_t desc_size)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	return 0;
 }

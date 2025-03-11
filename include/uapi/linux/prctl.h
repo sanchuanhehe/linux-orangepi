@@ -251,8 +251,13 @@ struct prctl_mm_map {
 #define PR_SET_VMA		0x53564d41
 # define PR_SET_VMA_ANON_NAME		0
 
+<<<<<<< HEAD
 /* Set/get enabled arm64 pointer authentication keys */
 #define PR_PAC_SET_ENABLED_KEYS		60
 #define PR_PAC_GET_ENABLED_KEYS		61
 
+=======
+/* Request set jitfort */
+#define PR_SET_JITFORT		0x6a6974
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #endif /* _LINUX_PRCTL_H */

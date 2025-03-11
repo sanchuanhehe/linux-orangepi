@@ -269,6 +269,14 @@ int pkcs7_sig_note_pkey_algo(void *context, size_t hdrlen,
 		ctx->sinfo->sig->pkey_algo = "rsa";
 		ctx->sinfo->sig->encoding = "pkcs1";
 		break;
+	case OID_id_ecdsa_with_sha1:
+	case OID_id_ecdsa_with_sha224:
+	case OID_id_ecdsa_with_sha256:
+	case OID_id_ecdsa_with_sha384:
+	case OID_id_ecdsa_with_sha512:
+		ctx->sinfo->sig->pkey_algo = "ecdsa";
+		ctx->sinfo->sig->encoding = "x962";
+		break;
 	default:
 		printk("Unsupported pkey algo: %u\n", ctx->last_oid);
 		return -ENOPKG;
@@ -517,6 +525,17 @@ int pkcs7_sig_note_authenticated_attr(void *context, size_t hdrlen,
 			return -EKEYREJECTED;
 		}
 		return 0;
+
+#ifdef CONFIG_SECURITY_CODE_SIGN
+	case OID_ownerid:
+		if (__test_and_set_bit(sinfo_has_owner_identifier, &sinfo->aa_set))
+			goto repeated;
+		if (tag != ASN1_UTF8STR)
+			return -EBADMSG;
+		sinfo->ownerid = value;
+		sinfo->ownerid_len = vlen;
+		return 0;
+#endif /* CONFIG_SECURITY_CODE_SIGN */
 
 		/* Microsoft SpOpusInfo seems to be contain cont[0] 16-bit BE
 		 * char URLs and cont[1] 8-bit char URLs.

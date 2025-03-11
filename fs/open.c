@@ -666,10 +666,10 @@ retry_deleg:
 		newattrs.ia_valid |= ATTR_GID;
 		newattrs.ia_gid = gid;
 	}
-	if (!S_ISDIR(inode->i_mode))
-		newattrs.ia_valid |=
-			ATTR_KILL_SUID | ATTR_KILL_SGID | ATTR_KILL_PRIV;
 	inode_lock(inode);
+	if (!S_ISDIR(inode->i_mode))
+		newattrs.ia_valid |= ATTR_KILL_SUID | ATTR_KILL_PRIV |
+				     setattr_should_drop_sgid(inode);
 	error = security_path_chown(path, uid, gid);
 	if (!error)
 		error = notify_change(path->dentry, &newattrs, &delegated_inode);
@@ -1112,7 +1112,11 @@ inline int build_open_flags(const struct open_how *how, struct open_flags *op)
 		lookup_flags |= LOOKUP_IN_ROOT;
 	if (how->resolve & RESOLVE_CACHED) {
 		/* Don't bother even trying for create/truncate/tmpfile open */
+<<<<<<< HEAD
 		if (flags & (O_TRUNC | O_CREAT | O_TMPFILE))
+=======
+		if (flags & (O_TRUNC | O_CREAT | __O_TMPFILE))
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			return -EAGAIN;
 		lookup_flags |= LOOKUP_CACHED;
 	}
@@ -1186,7 +1190,7 @@ err_out:
 }
 EXPORT_SYMBOL_GPL(filp_open_block);
 
-struct file *file_open_root(struct dentry *dentry, struct vfsmount *mnt,
+struct file *file_open_root(const struct path *root,
 			    const char *filename, int flags, umode_t mode)
 {
 	struct open_flags op;
@@ -1194,7 +1198,7 @@ struct file *file_open_root(struct dentry *dentry, struct vfsmount *mnt,
 	int err = build_open_flags(&how, &op);
 	if (err)
 		return ERR_PTR(err);
-	return do_file_open_root(dentry, mnt, filename, &op);
+	return do_file_open_root(root, filename, &op);
 }
 EXPORT_SYMBOL(file_open_root);
 

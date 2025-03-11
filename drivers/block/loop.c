@@ -1029,13 +1029,20 @@ loop_set_status_from_info(struct loop_device *lo,
 	if (err)
 		return err;
 
+	/* Avoid assigning overflow values */
+	if (info->lo_offset > LLONG_MAX || info->lo_sizelimit > LLONG_MAX)
+		return -EOVERFLOW;
+
 	lo->lo_offset = info->lo_offset;
 	lo->lo_sizelimit = info->lo_sizelimit;
 
+<<<<<<< HEAD
 	/* loff_t vars have been assigned __u64 */
 	if (lo->lo_offset < 0 || lo->lo_sizelimit < 0)
 		return -EOVERFLOW;
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	memcpy(lo->lo_file_name, info->lo_file_name, LO_NAME_SIZE);
 	memcpy(lo->lo_crypt_name, info->lo_crypt_name, LO_NAME_SIZE);
 	lo->lo_file_name[LO_NAME_SIZE-1] = 0;

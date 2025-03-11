@@ -118,4 +118,17 @@ source "drivers/staging/wfx/Kconfig"
 
 source "drivers/staging/hikey9xx/Kconfig"
 
+source "drivers/staging/hilog/Kconfig"
+
+source "drivers/staging/hievent/Kconfig"
+
+source "drivers/staging/hisysevent/Kconfig"
+
+source "drivers/staging/zerohung/Kconfig"
+
+source "drivers/staging/hungtask/Kconfig"
+
+source "drivers/staging/blackbox/Kconfig"
+
+source "drivers/staging/ucollection/Kconfig"
 endif # STAGING

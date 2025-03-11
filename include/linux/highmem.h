@@ -258,6 +258,26 @@ alloc_zeroed_user_highpage_movable(struct vm_area_struct *vma,
 }
 #endif
 
+<<<<<<< HEAD
+=======
+/**
+ * alloc_zeroed_user_highpage_movable - Allocate a zeroed HIGHMEM page for a VMA that the caller knows can move
+ * @vma: The VMA the page is to be allocated for
+ * @vaddr: The virtual address the page will be inserted into
+ *
+ * This function will allocate a page for a VMA that the caller knows will
+ * be able to migrate in the future using move_pages() or reclaimed
+ */
+static inline struct page *
+alloc_zeroed_user_highpage_movable(struct vm_area_struct *vma,
+					unsigned long vaddr)
+{
+	return __alloc_zeroed_user_highpage(
+			__GFP_MOVABLE | __GFP_CMA, vma,
+			vaddr);
+}
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 static inline void clear_highpage(struct page *page)
 {
 	void *kaddr = kmap_atomic(page);
@@ -333,5 +353,23 @@ static inline void copy_highpage(struct page *to, struct page *from)
 }
 
 #endif
+
+static inline void memcpy_from_page(char *to, struct page *page,
+				    size_t offset, size_t len)
+{
+	char *from = kmap_atomic(page);
+
+	memcpy(to, from + offset, len);
+	kunmap_atomic(from);
+}
+
+static inline void memcpy_to_page(struct page *page, size_t offset,
+				  const char *from, size_t len)
+{
+	char *to = kmap_atomic(page);
+
+	memcpy(to + offset, from, len);
+	kunmap_atomic(to);
+}
 
 #endif /* _LINUX_HIGHMEM_H */

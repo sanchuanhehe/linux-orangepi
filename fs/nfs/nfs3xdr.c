@@ -1987,7 +1987,11 @@ int nfs3_decode_dirent(struct xdr_stream *xdr, struct nfs_entry *entry,
 
 	error = decode_inline_filename3(xdr, &entry->name, &entry->len);
 	if (unlikely(error))
+<<<<<<< HEAD
 		return -EAGAIN;
+=======
+		return error == -ENAMETOOLONG ? -ENAMETOOLONG : -EAGAIN;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	error = decode_cookie3(xdr, &new_cookie);
 	if (unlikely(error))

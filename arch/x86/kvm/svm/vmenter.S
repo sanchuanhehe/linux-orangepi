@@ -137,6 +137,12 @@ SYM_FUNC_START(__svm_vcpu_run)
 	 */
 	UNTRAIN_RET
 
+<<<<<<< HEAD
+=======
+	/* SRSO */
+	ALTERNATIVE "", "call entry_ibpb", X86_FEATURE_IBPB_ON_VMEXIT
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	/*
 	 * Clear all general purpose registers except RSP and RAX to prevent
 	 * speculative use of the guest's values, even those that are reloaded

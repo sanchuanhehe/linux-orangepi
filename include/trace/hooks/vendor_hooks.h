@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 
+<<<<<<< HEAD
 /*
  * Note: we intentionally omit include file ifdef protection
  *  This is due to the way trace events work. If a file includes two
@@ -113,4 +114,16 @@ int android_rvh_probe_register(struct tracepoint *tp, void *probe, void *data);
 #define DECLARE_HOOK DECLARE_EVENT_NOP
 #define DECLARE_RESTRICTED_HOOK(name, proto, args, cond)		\
 	DECLARE_EVENT_NOP(name, PARAMS(proto), PARAMS(args))
+=======
+#include <linux/tracepoint.h>
+
+#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_VENDOR_HOOKS)
+
+#define DECLARE_HOOK DECLARE_TRACE
+
+#else /* !CONFIG_TRACEPOINTS || !CONFIG_VENDOR_HOOKS */
+
+#define DECLARE_HOOK DECLARE_EVENT_NOP
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #endif

@@ -48,6 +48,14 @@ static ulong ramoops_pmsg_size = MIN_MEM_SIZE;
 module_param_named(pmsg_size, ramoops_pmsg_size, ulong, 0400);
 MODULE_PARM_DESC(pmsg_size, "size of user space message log");
 
+static ulong ramoops_blackbox_size = MIN_MEM_SIZE;
+module_param_named(blackbox_size, ramoops_blackbox_size, ulong, 0400);
+MODULE_PARM_DESC(blackbox_size, "size of blackbox log");
+#if IS_ENABLED(CONFIG_PSTORE_BLACKBOX)
+bool pstore_ready;
+#endif
+
+
 static unsigned long long mem_address;
 module_param_hw(mem_address, ullong, other, 0400);
 MODULE_PARM_DESC(mem_address,
@@ -85,9 +93,13 @@ struct ramoops_context {
 	struct persistent_ram_zone *cprz;	/* Console zone */
 	struct persistent_ram_zone **fprzs;	/* Ftrace zones */
 	struct persistent_ram_zone *mprz;	/* PMSG zone */
+<<<<<<< HEAD
 #ifdef CONFIG_PSTORE_BOOT_LOG
 	struct persistent_ram_zone **boot_przs;	/* BOOT log zones */
 #endif
+=======
+	struct persistent_ram_zone *bprz;	/* BLACKBOX zone */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	phys_addr_t phys_addr;
 	unsigned long size;
 	unsigned int memtype;
@@ -95,9 +107,13 @@ struct ramoops_context {
 	size_t console_size;
 	size_t ftrace_size;
 	size_t pmsg_size;
+<<<<<<< HEAD
 #ifdef CONFIG_PSTORE_BOOT_LOG
 	size_t boot_log_size;
 #endif
+=======
+	size_t blackbox_size;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	u32 flags;
 	struct persistent_ram_ecc_info ecc_info;
 	unsigned int max_dump_cnt;
@@ -108,10 +124,14 @@ struct ramoops_context {
 	unsigned int max_ftrace_cnt;
 	unsigned int ftrace_read_cnt;
 	unsigned int pmsg_read_cnt;
+<<<<<<< HEAD
 #ifdef CONFIG_PSTORE_BOOT_LOG
 	unsigned int boot_log_read_cnt;
 	unsigned int max_boot_log_cnt;
 #endif
+=======
+	unsigned int blackbox_read_cnt;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	struct pstore_info pstore;
 };
 
@@ -125,6 +145,7 @@ static int ramoops_pstore_open(struct pstore_info *psi)
 	cxt->console_read_cnt = 0;
 	cxt->ftrace_read_cnt = 0;
 	cxt->pmsg_read_cnt = 0;
+	cxt->blackbox_read_cnt = 0;
 	return 0;
 }
 
@@ -249,6 +270,9 @@ static ssize_t ramoops_pstore_read(struct pstore_record *record)
 
 	if (!prz_ok(prz) && !cxt->pmsg_read_cnt++)
 		prz = ramoops_get_next_prz(&cxt->mprz, 0 /* single */, record);
+
+	if (!prz_ok(prz) && !cxt->blackbox_read_cnt++)
+		prz = ramoops_get_next_prz(&cxt->bprz, 0 /* single */, record);
 
 	/* ftrace is last since it may want to dynamically allocate memory. */
 	if (!prz_ok(prz)) {
@@ -388,6 +412,11 @@ static int notrace ramoops_pstore_write(struct pstore_record *record)
 	} else if (record->type == PSTORE_TYPE_PMSG) {
 		pr_warn_ratelimited("PMSG shouldn't call %s\n", __func__);
 		return -EINVAL;
+	} else if (record->type == PSTORE_TYPE_BLACKBOX) {
+		if (!cxt->bprz)
+			return -ENOMEM;
+		persistent_ram_write(cxt->bprz, record->buf, record->size);
+		return 0;
 	}
 
 	if (record->type != PSTORE_TYPE_DMESG)
@@ -478,6 +507,9 @@ static int ramoops_pstore_erase(struct pstore_record *record)
 		break;
 	case PSTORE_TYPE_PMSG:
 		prz = cxt->mprz;
+		break;
+	case PSTORE_TYPE_BLACKBOX:
+		prz = cxt->bprz;
 		break;
 	default:
 		return -EINVAL;
@@ -582,6 +614,7 @@ static int ramoops_init_przs(const char *name,
 	}
 
 	zone_sz = mem_sz / *cnt;
+	zone_sz = ALIGN_DOWN(zone_sz, 2);
 	if (!zone_sz) {
 		dev_err(dev, "%s zone size == 0\n", name);
 		goto fail;
@@ -746,6 +779,7 @@ static int ramoops_parse_dt(struct platform_device *pdev,
 	parse_u32("console-size", pdata->console_size, 0);
 	parse_u32("ftrace-size", pdata->ftrace_size, 0);
 	parse_u32("pmsg-size", pdata->pmsg_size, 0);
+	parse_u32("blackbox-size", pdata->blackbox_size, 0);
 	parse_u32("ecc-size", pdata->ecc_info.ecc_size, 0);
 	parse_u32("flags", pdata->flags, 0);
 	parse_u32("max-reason", pdata->max_reason, pdata->max_reason);
@@ -770,9 +804,11 @@ static int ramoops_parse_dt(struct platform_device *pdev,
 	parent_node = of_get_parent(of_node);
 	if (!of_node_name_eq(parent_node, "reserved-memory") &&
 	    !pdata->console_size && !pdata->ftrace_size &&
-	    !pdata->pmsg_size && !pdata->ecc_info.ecc_size) {
+	    !pdata->pmsg_size && !pdata->ecc_info.ecc_size &&
+	    !pdata->blackbox_size) {
 		pdata->console_size = pdata->record_size;
 		pdata->pmsg_size = pdata->record_size;
+		pdata->blackbox_size = pdata->record_size;
 	}
 	of_node_put(parent_node);
 
@@ -854,6 +890,7 @@ static int ramoops_probe(struct platform_device *pdev)
 	/* Make sure we didn't get bogus platform data pointer. */
 	if (!pdata) {
 		pr_err("NULL platform data\n");
+		err = -EINVAL;
 		goto fail_out;
 	}
 
@@ -866,9 +903,10 @@ static int ramoops_probe(struct platform_device *pdev)
 	}
 #else
 	if (!pdata->mem_size || (!pdata->record_size && !pdata->console_size &&
-			!pdata->ftrace_size && !pdata->pmsg_size)) {
+			!pdata->ftrace_size && !pdata->pmsg_size && !pdata->blackbox_size)) {
 		pr_err("The memory size and the record/console size must be "
 			"non-zero\n");
+		err = -EINVAL;
 		goto fail_out;
 	}
 #endif
@@ -882,7 +920,12 @@ static int ramoops_probe(struct platform_device *pdev)
 		pdata->ftrace_size = rounddown_pow_of_two(pdata->ftrace_size);
 	if (pdata->pmsg_size && !is_power_of_2(pdata->pmsg_size))
 		pdata->pmsg_size = rounddown_pow_of_two(pdata->pmsg_size);
+<<<<<<< HEAD
 #endif
+=======
+	if (pdata->blackbox_size && !is_power_of_2(pdata->blackbox_size))
+		pdata->blackbox_size = rounddown_pow_of_two(pdata->blackbox_size);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	cxt->size = pdata->mem_size;
 	cxt->phys_addr = pdata->mem_address;
@@ -891,6 +934,7 @@ static int ramoops_probe(struct platform_device *pdev)
 	cxt->console_size = pdata->console_size;
 	cxt->ftrace_size = pdata->ftrace_size;
 	cxt->pmsg_size = pdata->pmsg_size;
+	cxt->blackbox_size = pdata->blackbox_size;
 	cxt->flags = pdata->flags;
 	cxt->ecc_info = pdata->ecc_info;
 #ifdef CONFIG_PSTORE_BOOT_LOG
@@ -901,6 +945,7 @@ static int ramoops_probe(struct platform_device *pdev)
 	paddr = cxt->phys_addr;
 
 	dump_mem_sz = cxt->size - cxt->console_size - cxt->ftrace_size
+<<<<<<< HEAD
 			- cxt->pmsg_size;
 #ifdef CONFIG_PSTORE_BOOT_LOG
 	dump_mem_sz -= cxt->boot_log_size;
@@ -915,6 +960,17 @@ static int ramoops_probe(struct platform_device *pdev)
 	if (cxt->boot_log_size > 0)
 		for (i = 0; i < cxt->max_boot_log_cnt; i++)
 			pr_info("boot-log-%d\t0x%zx@%pa\n", i, cxt->boot_przs[i]->size, &cxt->boot_przs[i]->paddr);
+=======
+			- cxt->pmsg_size - cxt->blackbox_size;
+
+	err = ramoops_init_prz("blackbox", dev, cxt, &cxt->bprz, &paddr,
+			       cxt->blackbox_size, 0);
+	if (err)
+		goto fail_init_bprz;
+#if IS_ENABLED(CONFIG_PSTORE_BLACKBOX)
+	else
+		pstore_ready = true;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #endif
 
 	err = ramoops_init_przs("dmesg", dev, cxt, &cxt->dprzs, &paddr,
@@ -972,10 +1028,15 @@ static int ramoops_probe(struct platform_device *pdev)
 		cxt->pstore.flags |= PSTORE_FLAGS_FTRACE;
 	if (cxt->pmsg_size)
 		cxt->pstore.flags |= PSTORE_FLAGS_PMSG;
+<<<<<<< HEAD
 #ifdef CONFIG_PSTORE_BOOT_LOG
 	if (cxt->boot_log_size)
 		cxt->pstore.flags |= PSTORE_FLAGS_BOOT_LOG;
 #endif
+=======
+	if (cxt->blackbox_size)
+		cxt->pstore.flags |= PSTORE_FLAGS_BLACKBOX;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	/*
 	 * Since bufsize is only used for dmesg crash dumps, it
@@ -1009,9 +1070,14 @@ static int ramoops_probe(struct platform_device *pdev)
 	ramoops_console_size = pdata->console_size;
 	ramoops_pmsg_size = pdata->pmsg_size;
 	ramoops_ftrace_size = pdata->ftrace_size;
+<<<<<<< HEAD
 #if IS_REACHABLE(CONFIG_ROCKCHIP_MINIDUMP)
 	ramoops_register_ram_zone_info_to_minidump(cxt);
 #endif
+=======
+	ramoops_blackbox_size = pdata->blackbox_size;
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	pr_info("using 0x%lx@0x%llx, ecc: %d\n",
 		cxt->size, (unsigned long long)cxt->phys_addr,
 		cxt->ecc_info.ecc_size);
@@ -1026,6 +1092,8 @@ fail_clear:
 fail_init_mprz:
 fail_init_fprz:
 	persistent_ram_free(cxt->cprz);
+fail_init_bprz:
+	persistent_ram_free(cxt->bprz);
 fail_init_cprz:
 	ramoops_free_przs(cxt);
 fail_out:
@@ -1043,6 +1111,7 @@ static int ramoops_remove(struct platform_device *pdev)
 
 	persistent_ram_free(cxt->mprz);
 	persistent_ram_free(cxt->cprz);
+	persistent_ram_free(cxt->bprz);
 	ramoops_free_przs(cxt);
 
 	return 0;
@@ -1090,6 +1159,7 @@ static void __init ramoops_register_dummy(void)
 	pdata.console_size = ramoops_console_size;
 	pdata.ftrace_size = ramoops_ftrace_size;
 	pdata.pmsg_size = ramoops_pmsg_size;
+	pdata.blackbox_size = ramoops_blackbox_size;
 	/* If "max_reason" is set, its value has priority over "dump_oops". */
 	if (ramoops_max_reason >= 0)
 		pdata.max_reason = ramoops_max_reason;

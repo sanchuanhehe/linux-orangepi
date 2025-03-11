@@ -9,6 +9,7 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include "sched.h"
+#include "rtg/rtg.h"
 
 #include <linux/sched/cpufreq.h>
 #include <trace/events/power.h>
@@ -42,6 +43,10 @@ struct sugov_policy {
 	struct			mutex work_lock;
 	struct			kthread_worker worker;
 	struct task_struct	*thread;
+#ifdef CONFIG_SCHED_RTG
+	unsigned long rtg_util;
+	unsigned int rtg_freq;
+#endif
 	bool			work_in_progress;
 
 	bool			limits_changed;
@@ -302,6 +307,10 @@ static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
 	sg_cpu->max = max;
 	sg_cpu->bw_dl = cpu_bw_dl(rq);
 
+#ifdef CONFIG_SCHED_WALT
+	return cpu_util_freq_walt(sg_cpu->cpu);
+#endif
+
 	return schedutil_cpu_util(sg_cpu->cpu, util, max, FREQUENCY_UTIL, NULL);
 }
 
@@ -459,13 +468,20 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	unsigned long util, max;
 	unsigned int next_f;
 	unsigned int cached_freq = sg_policy->cached_raw_freq;
+	bool force_update = false;
+
+#ifdef CONFIG_SCHED_RTG
+	unsigned long irq_flag;
+
+	force_update = flags & SCHED_CPUFREQ_FORCE_UPDATE;
+#endif
 
 	sugov_iowait_boost(sg_cpu, time, flags);
 	sg_cpu->last_update = time;
 
 	ignore_dl_rate_limit(sg_cpu, sg_policy);
 
-	if (!sugov_should_update_freq(sg_policy, time))
+	if (!force_update && !sugov_should_update_freq(sg_policy, time))
 		return;
 
 	util = sugov_get_util(sg_cpu);
@@ -491,9 +507,17 @@ static void sugov_update_single(struct update_util_data *hook, u64 time,
 	if (sg_policy->policy->fast_switch_enabled) {
 		sugov_fast_switch(sg_policy, time, next_f);
 	} else {
+#ifdef CONFIG_SCHED_RTG
+		raw_spin_lock_irqsave(&sg_policy->update_lock, irq_flag);
+#else
 		raw_spin_lock(&sg_policy->update_lock);
+#endif
 		sugov_deferred_update(sg_policy, time, next_f);
+#ifdef CONFIG_SCHED_RTG
+		raw_spin_unlock_irqrestore(&sg_policy->update_lock, irq_flag);
+#else
 		raw_spin_unlock(&sg_policy->update_lock);
+#endif
 	}
 }
 
@@ -518,6 +542,11 @@ static unsigned int sugov_next_freq_shared(struct sugov_cpu *sg_cpu, u64 time)
 		}
 	}
 
+#ifdef CONFIG_SCHED_RTG
+	sched_get_max_group_util(policy->cpus, &sg_policy->rtg_util, &sg_policy->rtg_freq);
+	util = max(sg_policy->rtg_util, util);
+#endif
+
 	return get_next_freq(sg_policy, util, max);
 }
 
@@ -527,15 +556,29 @@ sugov_update_shared(struct update_util_data *hook, u64 time, unsigned int flags)
 	struct sugov_cpu *sg_cpu = container_of(hook, struct sugov_cpu, update_util);
 	struct sugov_policy *sg_policy = sg_cpu->sg_policy;
 	unsigned int next_f;
+	bool force_update = false;
+#ifdef CONFIG_SCHED_RTG
+	unsigned long irq_flag;
+#endif
 
+#ifdef CONFIG_SCHED_RTG
+	force_update = flags & SCHED_CPUFREQ_FORCE_UPDATE;
+	raw_spin_lock_irqsave(&sg_policy->update_lock, irq_flag);
+#else
 	raw_spin_lock(&sg_policy->update_lock);
+#endif
 
 	sugov_iowait_boost(sg_cpu, time, flags);
 	sg_cpu->last_update = time;
 
 	ignore_dl_rate_limit(sg_cpu, sg_policy);
 
-	if (sugov_should_update_freq(sg_policy, time)) {
+#ifdef CONFIG_SCHED_WALT
+	if ((force_update || sugov_should_update_freq(sg_policy, time))
+			&& !(flags & SCHED_CPUFREQ_CONTINUE)) {
+#else
+	if (force_update || sugov_should_update_freq(sg_policy, time)) {
+#endif
 		next_f = sugov_next_freq_shared(sg_cpu, time);
 
 		if (sg_policy->policy->fast_switch_enabled)
@@ -544,7 +587,11 @@ sugov_update_shared(struct update_util_data *hook, u64 time, unsigned int flags)
 			sugov_deferred_update(sg_policy, time, next_f);
 	}
 
+#ifdef CONFIG_SCHED_RTG
+	raw_spin_unlock_irqrestore(&sg_policy->update_lock, irq_flag);
+#else
 	raw_spin_unlock(&sg_policy->update_lock);
+#endif
 }
 
 static void sugov_work(struct kthread_work *work)

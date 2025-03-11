@@ -176,6 +176,19 @@ static void io_worker_ref_put(struct io_wq *wq)
 		complete(&wq->worker_done);
 }
 
+<<<<<<< HEAD
+=======
+bool io_wq_worker_stopped(void)
+{
+	struct io_worker *worker = current->pf_io_worker;
+
+	if (WARN_ON_ONCE(!io_wq_current_is_worker()))
+		return true;
+
+	return test_bit(IO_WQ_BIT_EXIT, &worker->wqe->wq->state);
+}
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 static void io_worker_cancel_cb(struct io_worker *worker)
 {
 	struct io_wqe_acct *acct = io_wqe_get_acct(worker);
@@ -513,7 +526,11 @@ static struct io_wq_work *io_get_next_work(struct io_wqe_acct *acct,
 
 static bool io_flush_signals(void)
 {
+<<<<<<< HEAD
 	if (unlikely(test_thread_flag(TIF_NOTIFY_SIGNAL))) {
+=======
+	if (test_thread_flag(TIF_NOTIFY_SIGNAL) || current->task_works) {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		__set_current_state(TASK_RUNNING);
 		tracehook_notify_signal();
 		return true;
@@ -1217,6 +1234,15 @@ static void io_wq_cancel_tw_create(struct io_wq *wq)
 
 		worker = container_of(cb, struct io_worker, create_work);
 		io_worker_cancel_cb(worker);
+<<<<<<< HEAD
+=======
+		/*
+		 * Only the worker continuation helper has worker allocated and
+		 * hence needs freeing.
+		 */
+		if (cb->func == create_worker_cont)
+			kfree(worker);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	}
 }
 

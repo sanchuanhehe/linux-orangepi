@@ -93,6 +93,8 @@
 #include <linux/fsnotify.h>
 #include <linux/fanotify.h>
 
+#include <linux/hck/lite_hck_ced.h>
+
 #include "avc.h"
 #include "objsec.h"
 #include "netif.h"
@@ -1280,7 +1282,7 @@ static inline u16 socket_type_to_security_class(int family, int type, int protoc
 			return SECCLASS_SMC_SOCKET;
 		case PF_XDP:
 			return SECCLASS_XDP_SOCKET;
-#if PF_MAX > 45
+#if PF_MAX > 46
 #error New address family defined, please update this function.
 #endif
 		}
@@ -4679,6 +4681,13 @@ static int selinux_socket_bind(struct socket *sock, struct sockaddr *address, in
 				return -EINVAL;
 			addr4 = (struct sockaddr_in *)address;
 			if (family_sa == AF_UNSPEC) {
+				if (family == PF_INET6) {
+					/* Length check from inet6_bind_sk() */
+					if (addrlen < SIN6_LEN_RFC2133)
+						return -EINVAL;
+					/* Family check from __inet6_bind() */
+					goto err_af;
+				}
 				/* see __inet_bind(), we only want to allow
 				 * AF_UNSPEC if the address is INADDR_ANY
 				 */
@@ -6542,6 +6551,7 @@ static int selinux_setprocattr(const char *name, void *value, size_t size)
 	}
 
 	commit_creds(new);
+	CALL_HCK_LITE_HOOK(ced_setattr_insert_lhck, current);
 	return size;
 
 abort_change:

@@ -610,6 +610,7 @@ static void erratum_1418040_new_exec(void)
 	preempt_disable();
 	erratum_1418040_thread_switch(current);
 	preempt_enable();
+<<<<<<< HEAD
 }
 
 /*
@@ -628,6 +629,8 @@ void update_sctlr_el1(u64 sctlr)
 
 	/* ISB required for the kernel uaccess routines when setting TCF0. */
 	isb();
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 /*
@@ -646,7 +649,10 @@ __notrace_funcgraph struct task_struct *__switch_to(struct task_struct *prev,
 	uao_thread_switch(next);
 	ssbs_thread_switch(next);
 	erratum_1418040_thread_switch(next);
+<<<<<<< HEAD
 	ptrauth_thread_switch_user(next);
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	/*
 	 * Complete any pending TLB or cache maintenance on this CPU in case
@@ -717,6 +723,7 @@ void arch_setup_new_exec(void)
 {
 	unsigned long mmflags = 0;
 
+<<<<<<< HEAD
 	if (is_compat_task()) {
 		mmflags = MMCF_AARCH32;
 
@@ -736,6 +743,9 @@ void arch_setup_new_exec(void)
 	current->mm->context.flags = mmflags;
 	ptrauth_thread_init_user();
 	mte_thread_init_user();
+=======
+	ptrauth_thread_init_user(current);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	erratum_1418040_new_exec();
 
 	if (task_spec_ssb_noexec(current)) {

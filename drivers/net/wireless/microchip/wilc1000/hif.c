@@ -470,6 +470,12 @@ void *wilc_parse_join_bss_param(struct cfg80211_bss *bss,
 		int rsn_ie_len = sizeof(struct element) + rsn_ie[1];
 		int offset = 8;
 
+<<<<<<< HEAD
+=======
+		param->mode_802_11i = 2;
+		param->rsn_found = true;
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		/* extract RSN capabilities */
 		if (offset < rsn_ie_len) {
 			/* skip over pairwise suites */
@@ -479,11 +485,16 @@ void *wilc_parse_join_bss_param(struct cfg80211_bss *bss,
 				/* skip over authentication suites */
 				offset += (rsn_ie[offset] * 4) + 2;
 
+<<<<<<< HEAD
 				if (offset + 1 < rsn_ie_len) {
 					param->mode_802_11i = 2;
 					param->rsn_found = true;
 					memcpy(param->rsn_cap, &rsn_ie[offset], 2);
 				}
+=======
+				if (offset + 1 < rsn_ie_len)
+					memcpy(param->rsn_cap, &rsn_ie[offset], 2);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			}
 		}
 	}

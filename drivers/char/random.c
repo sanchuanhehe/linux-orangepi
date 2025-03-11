@@ -60,10 +60,13 @@
 #include <asm/irq_regs.h>
 #include <asm/io.h>
 
+<<<<<<< HEAD
 // GKI: Keep this header to retain the original CRC that previously used the
 // random.h tracepoints.
 #include <linux/writeback.h>
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 /*********************************************************************
  *
  * Initialization and readiness waiting.
@@ -176,7 +179,10 @@ int __cold unregister_random_ready_notifier(struct notifier_block *nb)
 	return ret;
 }
 
+<<<<<<< HEAD
 static void process_oldschool_random_ready_list(void);
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 static void __cold process_random_ready_list(void)
 {
 	unsigned long flags;
@@ -184,8 +190,11 @@ static void __cold process_random_ready_list(void)
 	spin_lock_irqsave(&random_ready_chain_lock, flags);
 	raw_notifier_call_chain(&random_ready_chain, 0, NULL);
 	spin_unlock_irqrestore(&random_ready_chain_lock, flags);
+<<<<<<< HEAD
 
 	process_oldschool_random_ready_list();
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 #define warn_unseeded_randomness() \
@@ -441,7 +450,11 @@ static void _get_random_bytes(void *buf, size_t len)
  * wait_for_random_bytes() should be called and return 0 at least once
  * at any point prior.
  */
+<<<<<<< HEAD
 void get_random_bytes(void *buf, int len)
+=======
+void get_random_bytes(void *buf, size_t len)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	warn_unseeded_randomness();
 	_get_random_bytes(buf, len);
@@ -585,7 +598,11 @@ int __cold random_prepare_cpu(unsigned int cpu)
  * use. Use get_random_bytes() instead. It returns the number of
  * bytes filled in.
  */
+<<<<<<< HEAD
 int __must_check get_random_bytes_arch(void *buf, int len)
+=======
+size_t __must_check get_random_bytes_arch(void *buf, size_t len)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	size_t left = len;
 	u8 *p = buf;
@@ -858,7 +875,11 @@ int __init random_init(const char *command_line)
  * the entropy pool having similar initial state across largely
  * identical devices.
  */
+<<<<<<< HEAD
 void add_device_randomness(const void *buf, unsigned int len)
+=======
+void add_device_randomness(const void *buf, size_t len)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	unsigned long entropy = random_get_entropy();
 	unsigned long flags;
@@ -1165,6 +1186,7 @@ static void __cold entropy_timer(struct timer_list *t)
  * generate enough entropy with timing noise
  */
 static void __cold try_to_generate_entropy(void)
+<<<<<<< HEAD
 {
 	struct {
 		unsigned long entropy;
@@ -1612,3 +1634,379 @@ static void process_oldschool_random_ready_list(void)
 	}
 	spin_unlock_irqrestore(&random_ready_list_lock, flags);
 }
+=======
+{
+	struct {
+		unsigned long entropy;
+		struct timer_list timer;
+	} stack;
+
+	stack.entropy = random_get_entropy();
+
+	/* Slow counter - or none. Don't even bother */
+	if (stack.entropy == random_get_entropy())
+		return;
+
+	timer_setup_on_stack(&stack.timer, entropy_timer, 0);
+	while (!crng_ready() && !signal_pending(current)) {
+		if (!timer_pending(&stack.timer))
+			mod_timer(&stack.timer, jiffies + 1);
+		mix_pool_bytes(&stack.entropy, sizeof(stack.entropy));
+		schedule();
+		stack.entropy = random_get_entropy();
+	}
+
+	del_timer_sync(&stack.timer);
+	destroy_timer_on_stack(&stack.timer);
+	mix_pool_bytes(&stack.entropy, sizeof(stack.entropy));
+}
+
+
+/**********************************************************************
+ *
+ * Userspace reader/writer interfaces.
+ *
+ * getrandom(2) is the primary modern interface into the RNG and should
+ * be used in preference to anything else.
+ *
+ * Reading from /dev/random has the same functionality as calling
+ * getrandom(2) with flags=0. In earlier versions, however, it had
+ * vastly different semantics and should therefore be avoided, to
+ * prevent backwards compatibility issues.
+ *
+ * Reading from /dev/urandom has the same functionality as calling
+ * getrandom(2) with flags=GRND_INSECURE. Because it does not block
+ * waiting for the RNG to be ready, it should not be used.
+ *
+ * Writing to either /dev/random or /dev/urandom adds entropy to
+ * the input pool but does not credit it.
+ *
+ * Polling on /dev/random indicates when the RNG is initialized, on
+ * the read side, and when it wants new entropy, on the write side.
+ *
+ * Both /dev/random and /dev/urandom have the same set of ioctls for
+ * adding entropy, getting the entropy count, zeroing the count, and
+ * reseeding the crng.
+ *
+ **********************************************************************/
+
+SYSCALL_DEFINE3(getrandom, char __user *, ubuf, size_t, len, unsigned int, flags)
+{
+	struct iov_iter iter;
+	struct iovec iov;
+	int ret;
+
+	if (flags & ~(GRND_NONBLOCK | GRND_RANDOM | GRND_INSECURE))
+		return -EINVAL;
+
+	/*
+	 * Requesting insecure and blocking randomness at the same time makes
+	 * no sense.
+	 */
+	if ((flags & (GRND_INSECURE | GRND_RANDOM)) == (GRND_INSECURE | GRND_RANDOM))
+		return -EINVAL;
+
+	if (!crng_ready() && !(flags & GRND_INSECURE)) {
+		if (flags & GRND_NONBLOCK)
+			return -EAGAIN;
+		ret = wait_for_random_bytes();
+		if (unlikely(ret))
+			return ret;
+	}
+
+	ret = import_single_range(READ, ubuf, len, &iov, &iter);
+	if (unlikely(ret))
+		return ret;
+	return get_random_bytes_user(&iter);
+}
+
+static __poll_t random_poll(struct file *file, poll_table *wait)
+{
+	poll_wait(file, &crng_init_wait, wait);
+	return crng_ready() ? EPOLLIN | EPOLLRDNORM : EPOLLOUT | EPOLLWRNORM;
+}
+
+static ssize_t write_pool_user(struct iov_iter *iter)
+{
+	u8 block[BLAKE2S_BLOCK_SIZE];
+	ssize_t ret = 0;
+	size_t copied;
+
+	if (unlikely(!iov_iter_count(iter)))
+		return 0;
+
+	for (;;) {
+		copied = copy_from_iter(block, sizeof(block), iter);
+		ret += copied;
+		mix_pool_bytes(block, copied);
+		if (!iov_iter_count(iter) || copied != sizeof(block))
+			break;
+
+		BUILD_BUG_ON(PAGE_SIZE % sizeof(block) != 0);
+		if (ret % PAGE_SIZE == 0) {
+			if (signal_pending(current))
+				break;
+			cond_resched();
+		}
+	}
+
+	memzero_explicit(block, sizeof(block));
+	return ret ? ret : -EFAULT;
+}
+
+static ssize_t random_write_iter(struct kiocb *kiocb, struct iov_iter *iter)
+{
+	return write_pool_user(iter);
+}
+
+static ssize_t urandom_read_iter(struct kiocb *kiocb, struct iov_iter *iter)
+{
+	static int maxwarn = 10;
+
+	if (!crng_ready()) {
+		if (!ratelimit_disable && maxwarn <= 0)
+			++urandom_warning.missed;
+		else if (ratelimit_disable || __ratelimit(&urandom_warning)) {
+			--maxwarn;
+			pr_notice("%s: uninitialized urandom read (%zu bytes read)\n",
+				  current->comm, iov_iter_count(iter));
+		}
+	}
+
+	return get_random_bytes_user(iter);
+}
+
+static ssize_t random_read_iter(struct kiocb *kiocb, struct iov_iter *iter)
+{
+	int ret;
+
+	if (!crng_ready() &&
+	    ((kiocb->ki_flags & (IOCB_NOWAIT | IOCB_NOIO)) ||
+	     (kiocb->ki_filp->f_flags & O_NONBLOCK)))
+		return -EAGAIN;
+
+	ret = wait_for_random_bytes();
+	if (ret != 0)
+		return ret;
+	return get_random_bytes_user(iter);
+}
+
+static long random_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
+{
+	int __user *p = (int __user *)arg;
+	int ent_count;
+
+	switch (cmd) {
+	case RNDGETENTCNT:
+		/* Inherently racy, no point locking. */
+		if (put_user(input_pool.init_bits, p))
+			return -EFAULT;
+		return 0;
+	case RNDADDTOENTCNT:
+		if (!capable(CAP_SYS_ADMIN))
+			return -EPERM;
+		if (get_user(ent_count, p))
+			return -EFAULT;
+		if (ent_count < 0)
+			return -EINVAL;
+		credit_init_bits(ent_count);
+		return 0;
+	case RNDADDENTROPY: {
+		struct iov_iter iter;
+		struct iovec iov;
+		ssize_t ret;
+		int len;
+
+		if (!capable(CAP_SYS_ADMIN))
+			return -EPERM;
+		if (get_user(ent_count, p++))
+			return -EFAULT;
+		if (ent_count < 0)
+			return -EINVAL;
+		if (get_user(len, p++))
+			return -EFAULT;
+		ret = import_single_range(WRITE, p, len, &iov, &iter);
+		if (unlikely(ret))
+			return ret;
+		ret = write_pool_user(&iter);
+		if (unlikely(ret < 0))
+			return ret;
+		/* Since we're crediting, enforce that it was all written into the pool. */
+		if (unlikely(ret != len))
+			return -EFAULT;
+		credit_init_bits(ent_count);
+		return 0;
+	}
+	case RNDZAPENTCNT:
+	case RNDCLEARPOOL:
+		/* No longer has any effect. */
+		if (!capable(CAP_SYS_ADMIN))
+			return -EPERM;
+		return 0;
+	case RNDRESEEDCRNG:
+		if (!capable(CAP_SYS_ADMIN))
+			return -EPERM;
+		if (!crng_ready())
+			return -ENODATA;
+		crng_reseed();
+		return 0;
+	default:
+		return -EINVAL;
+	}
+}
+
+static int random_fasync(int fd, struct file *filp, int on)
+{
+	return fasync_helper(fd, filp, on, &fasync);
+}
+
+const struct file_operations random_fops = {
+	.read_iter = random_read_iter,
+	.write_iter = random_write_iter,
+	.poll = random_poll,
+	.unlocked_ioctl = random_ioctl,
+	.compat_ioctl = compat_ptr_ioctl,
+	.fasync = random_fasync,
+	.llseek = noop_llseek,
+	.splice_read = generic_file_splice_read,
+	.splice_write = iter_file_splice_write,
+};
+
+const struct file_operations urandom_fops = {
+	.read_iter = urandom_read_iter,
+	.write_iter = random_write_iter,
+	.unlocked_ioctl = random_ioctl,
+	.compat_ioctl = compat_ptr_ioctl,
+	.fasync = random_fasync,
+	.llseek = noop_llseek,
+	.splice_read = generic_file_splice_read,
+	.splice_write = iter_file_splice_write,
+};
+
+
+/********************************************************************
+ *
+ * Sysctl interface.
+ *
+ * These are partly unused legacy knobs with dummy values to not break
+ * userspace and partly still useful things. They are usually accessible
+ * in /proc/sys/kernel/random/ and are as follows:
+ *
+ * - boot_id - a UUID representing the current boot.
+ *
+ * - uuid - a random UUID, different each time the file is read.
+ *
+ * - poolsize - the number of bits of entropy that the input pool can
+ *   hold, tied to the POOL_BITS constant.
+ *
+ * - entropy_avail - the number of bits of entropy currently in the
+ *   input pool. Always <= poolsize.
+ *
+ * - write_wakeup_threshold - the amount of entropy in the input pool
+ *   below which write polls to /dev/random will unblock, requesting
+ *   more entropy, tied to the POOL_READY_BITS constant. It is writable
+ *   to avoid breaking old userspaces, but writing to it does not
+ *   change any behavior of the RNG.
+ *
+ * - urandom_min_reseed_secs - fixed to the value CRNG_RESEED_INTERVAL.
+ *   It is writable to avoid breaking old userspaces, but writing
+ *   to it does not change any behavior of the RNG.
+ *
+ ********************************************************************/
+
+#ifdef CONFIG_SYSCTL
+
+#include <linux/sysctl.h>
+
+static int sysctl_random_min_urandom_seed = CRNG_RESEED_INTERVAL / HZ;
+static int sysctl_random_write_wakeup_bits = POOL_READY_BITS;
+static int sysctl_poolsize = POOL_BITS;
+static u8 sysctl_bootid[UUID_SIZE];
+
+/*
+ * This function is used to return both the bootid UUID, and random
+ * UUID. The difference is in whether table->data is NULL; if it is,
+ * then a new UUID is generated and returned to the user.
+ */
+static int proc_do_uuid(struct ctl_table *table, int write, void *buf,
+			size_t *lenp, loff_t *ppos)
+{
+	u8 tmp_uuid[UUID_SIZE], *uuid;
+	char uuid_string[UUID_STRING_LEN + 1];
+	struct ctl_table fake_table = {
+		.data = uuid_string,
+		.maxlen = UUID_STRING_LEN
+	};
+
+	if (write)
+		return -EPERM;
+
+	uuid = table->data;
+	if (!uuid) {
+		uuid = tmp_uuid;
+		generate_random_uuid(uuid);
+	} else {
+		static DEFINE_SPINLOCK(bootid_spinlock);
+
+		spin_lock(&bootid_spinlock);
+		if (!uuid[8])
+			generate_random_uuid(uuid);
+		spin_unlock(&bootid_spinlock);
+	}
+
+	snprintf(uuid_string, sizeof(uuid_string), "%pU", uuid);
+	return proc_dostring(&fake_table, 0, buf, lenp, ppos);
+}
+
+/* The same as proc_dointvec, but writes don't change anything. */
+static int proc_do_rointvec(struct ctl_table *table, int write, void *buf,
+			    size_t *lenp, loff_t *ppos)
+{
+	return write ? 0 : proc_dointvec(table, 0, buf, lenp, ppos);
+}
+
+extern struct ctl_table random_table[];
+struct ctl_table random_table[] = {
+	{
+		.procname	= "poolsize",
+		.data		= &sysctl_poolsize,
+		.maxlen		= sizeof(int),
+		.mode		= 0444,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "entropy_avail",
+		.data		= &input_pool.init_bits,
+		.maxlen		= sizeof(int),
+		.mode		= 0444,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "write_wakeup_threshold",
+		.data		= &sysctl_random_write_wakeup_bits,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_do_rointvec,
+	},
+	{
+		.procname	= "urandom_min_reseed_secs",
+		.data		= &sysctl_random_min_urandom_seed,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_do_rointvec,
+	},
+	{
+		.procname	= "boot_id",
+		.data		= &sysctl_bootid,
+		.mode		= 0444,
+		.proc_handler	= proc_do_uuid,
+	},
+	{
+		.procname	= "uuid",
+		.mode		= 0444,
+		.proc_handler	= proc_do_uuid,
+	},
+	{ }
+};
+#endif	/* CONFIG_SYSCTL */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release

@@ -155,11 +155,14 @@ enum nvme_quirks {
 	 * Reports garbage in the namespace identifiers (eui64, nguid, uuid).
 	 */
 	NVME_QUIRK_BOGUS_NID			= (1 << 18),
+<<<<<<< HEAD
 
 	/*
 	 * Limit io queue depth to 32
 	 */
 	NVME_QUIRK_LIMIT_IOQD32			= (1 << 31),
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 };
 
 /*
@@ -351,6 +354,8 @@ struct nvme_ctrl {
 	u16 icdoff;
 	u16 maxcmd;
 	int nr_reconnects;
+	unsigned long flags;
+#define NVME_CTRL_ADMIN_Q_STOPPED	0
 	struct nvmf_ctrl_options *opts;
 
 	struct page *discard_page;
@@ -358,6 +363,11 @@ struct nvme_ctrl {
 
 	struct nvme_fault_inject fault_inject;
 };
+
+static inline enum nvme_ctrl_state nvme_ctrl_state(struct nvme_ctrl *ctrl)
+{
+	return READ_ONCE(ctrl->state);
+}
 
 enum nvme_iopolicy {
 	NVME_IOPOLICY_NUMA,
@@ -462,6 +472,7 @@ struct nvme_ns {
 #define NVME_NS_REMOVING	0
 #define NVME_NS_DEAD     	1
 #define NVME_NS_ANA_PENDING	2
+#define NVME_NS_STOPPED		3
 
 	struct nvme_fault_inject fault_inject;
 
@@ -672,6 +683,8 @@ void nvme_complete_async_event(struct nvme_ctrl *ctrl, __le16 status,
 
 void nvme_stop_queues(struct nvme_ctrl *ctrl);
 void nvme_start_queues(struct nvme_ctrl *ctrl);
+void nvme_stop_admin_queue(struct nvme_ctrl *ctrl);
+void nvme_start_admin_queue(struct nvme_ctrl *ctrl);
 void nvme_kill_queues(struct nvme_ctrl *ctrl);
 void nvme_sync_queues(struct nvme_ctrl *ctrl);
 void nvme_sync_io_queues(struct nvme_ctrl *ctrl);
@@ -754,7 +767,7 @@ static inline void nvme_trace_bio_complete(struct request *req,
 {
 	struct nvme_ns *ns = req->q->queuedata;
 
-	if (req->cmd_flags & REQ_NVME_MPATH)
+	if ((req->cmd_flags & REQ_NVME_MPATH) && req->bio)
 		trace_block_bio_complete(ns->head->disk->queue, req->bio);
 }
 

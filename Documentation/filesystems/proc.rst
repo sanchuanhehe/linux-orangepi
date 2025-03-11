@@ -429,7 +429,11 @@ is not associated with a file:
  [stack]                    the stack of the main process
  [vdso]                     the "virtual dynamic shared object",
                             the kernel system call handler
+<<<<<<< HEAD
  [anon:<name>]              an anonymous mapping that has been
+=======
+[anon:<name>]               an anonymous mapping that has been
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
                             named by userspace
  =======                    ====================================
 

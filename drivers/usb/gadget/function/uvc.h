@@ -129,8 +129,11 @@ struct uvc_device {
 	struct uvc_video video;
 	bool func_connected;
 	wait_queue_head_t func_connected_queue;
+<<<<<<< HEAD
 	/* for creating and issuing QoS requests */
 	struct pm_qos_request pm_qos;
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	/* Descriptors */
 	struct {

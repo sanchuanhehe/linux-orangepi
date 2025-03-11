@@ -112,7 +112,11 @@
  * eventually turn into it's own annotation.
  */
 .macro ANNOTATE_UNRET_END
+<<<<<<< HEAD
 #ifdef CONFIG_DEBUG_ENTRY
+=======
+#if (defined(CONFIG_CPU_UNRET_ENTRY) || defined(CONFIG_CPU_SRSO))
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	ANNOTATE_RETPOLINE_SAFE
 	nop
 #endif
@@ -156,6 +160,7 @@
 .endm
 
 #ifdef CONFIG_CPU_UNRET_ENTRY
+<<<<<<< HEAD
 #define CALL_ZEN_UNTRAIN_RET	"call zen_untrain_ret"
 #else
 #define CALL_ZEN_UNTRAIN_RET	""
@@ -178,7 +183,45 @@
 	ALTERNATIVE_2 "",						\
 	              CALL_ZEN_UNTRAIN_RET, X86_FEATURE_UNRET,		\
 		      "call entry_ibpb", X86_FEATURE_ENTRY_IBPB
+=======
+#define CALL_UNTRAIN_RET	"call entry_untrain_ret"
+#else
+#define CALL_UNTRAIN_RET	""
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #endif
+
+/*
+ * Mitigate RETBleed for AMD/Hygon Zen uarch. Requires KERNEL CR3 because the
+ * return thunk isn't mapped into the userspace tables (then again, AMD
+ * typically has NO_MELTDOWN).
+ *
+ * While retbleed_untrain_ret() doesn't clobber anything but requires stack,
+ * entry_ibpb() will clobber AX, CX, DX.
+ *
+ * As such, this must be placed after every *SWITCH_TO_KERNEL_CR3 at a point
+ * where we have a stack but before any RET instruction.
+ */
+.macro UNTRAIN_RET
+#if defined(CONFIG_CPU_UNRET_ENTRY) || defined(CONFIG_CPU_IBPB_ENTRY) || \
+	defined(CONFIG_CPU_SRSO)
+	ANNOTATE_UNRET_END
+	ALTERNATIVE_2 "",						\
+		      CALL_UNTRAIN_RET, X86_FEATURE_UNRET,		\
+		      "call entry_ibpb", X86_FEATURE_ENTRY_IBPB
+#endif
+.endm
+
+/*
+ * Macro to execute VERW instruction that mitigate transient data sampling
+ * attacks such as MDS. On affected systems a microcode update overloaded VERW
+ * instruction to also clear the CPU buffers. VERW clobbers CFLAGS.ZF.
+ *
+ * Note: Only the memory operand variant of VERW clears the CPU buffers.
+ */
+.macro CLEAR_CPU_BUFFERS
+	ALTERNATIVE "jmp .Lskip_verw_\@", "", X86_FEATURE_CLEAR_CPU_BUF
+	verw _ASM_RIP(mds_verw_sel)
+.Lskip_verw_\@:
 .endm
 
 #else /* __ASSEMBLY__ */
@@ -189,8 +232,26 @@
 	_ASM_PTR " 999b\n\t"					\
 	".popsection\n\t"
 
+<<<<<<< HEAD
 extern void __x86_return_thunk(void);
 extern void zen_untrain_ret(void);
+=======
+#ifdef CONFIG_RETHUNK
+extern void __x86_return_thunk(void);
+#else
+static inline void __x86_return_thunk(void) {}
+#endif
+
+extern void retbleed_return_thunk(void);
+extern void srso_return_thunk(void);
+extern void srso_alias_return_thunk(void);
+
+extern void retbleed_untrain_ret(void);
+extern void srso_untrain_ret(void);
+extern void srso_alias_untrain_ret(void);
+
+extern void entry_untrain_ret(void);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 extern void entry_ibpb(void);
 
 #ifdef CONFIG_RETPOLINE
@@ -300,11 +361,11 @@ void alternative_msr_write(unsigned int msr, u64 val, unsigned int feature)
 		: "memory");
 }
 
+extern u64 x86_pred_cmd;
+
 static inline void indirect_branch_prediction_barrier(void)
 {
-	u64 val = PRED_CMD_IBPB;
-
-	alternative_msr_write(MSR_IA32_PRED_CMD, val, X86_FEATURE_USE_IBPB);
+	alternative_msr_write(MSR_IA32_PRED_CMD, x86_pred_cmd, X86_FEATURE_USE_IBPB);
 }
 
 /* The Intel SPEC CTRL MSR base value cache */
@@ -341,11 +402,15 @@ DECLARE_STATIC_KEY_FALSE(switch_to_cond_stibp);
 DECLARE_STATIC_KEY_FALSE(switch_mm_cond_ibpb);
 DECLARE_STATIC_KEY_FALSE(switch_mm_always_ibpb);
 
-DECLARE_STATIC_KEY_FALSE(mds_user_clear);
 DECLARE_STATIC_KEY_FALSE(mds_idle_clear);
 
 DECLARE_STATIC_KEY_FALSE(mmio_stale_data_clear);
 
+<<<<<<< HEAD
+=======
+extern u16 mds_verw_sel;
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #include <asm/segment.h>
 
 /**
@@ -369,17 +434,6 @@ static __always_inline void mds_clear_cpu_buffers(void)
 	 * "cc" clobber is required because VERW modifies ZF.
 	 */
 	asm volatile("verw %[ds]" : : [ds] "m" (ds) : "cc");
-}
-
-/**
- * mds_user_clear_cpu_buffers - Mitigation for MDS and TAA vulnerability
- *
- * Clear CPU buffers if the corresponding static key is enabled
- */
-static __always_inline void mds_user_clear_cpu_buffers(void)
-{
-	if (static_branch_likely(&mds_user_clear))
-		mds_clear_cpu_buffers();
 }
 
 /**

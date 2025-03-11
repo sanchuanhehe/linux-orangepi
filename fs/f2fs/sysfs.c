@@ -36,8 +36,14 @@ enum {
 	FAULT_INFO_TYPE,	/* struct f2fs_fault_info */
 #endif
 	RESERVED_BLOCKS,	/* struct f2fs_sb_info */
+<<<<<<< HEAD
 	CPRC_INFO,	/* struct ckpt_req_control */
 	ATGC_INFO,	/* struct atgc_management */
+=======
+#ifdef CONFIG_F2FS_GRADING_SSR
+	F2FS_HOT_COLD_PARAMS,	/* struct f2fs_hot_cold_params */
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 };
 
 struct f2fs_attr {
@@ -65,6 +71,10 @@ static unsigned char *__struct_ptr(struct f2fs_sb_info *sbi, int struct_type)
 		return (unsigned char *)NM_I(sbi);
 	else if (struct_type == F2FS_SBI || struct_type == RESERVED_BLOCKS)
 		return (unsigned char *)sbi;
+#ifdef CONFIG_F2FS_GRADING_SSR
+	else if (struct_type == F2FS_HOT_COLD_PARAMS)
+		return (unsigned char *)&sbi->hot_cold_params;
+#endif
 #ifdef CONFIG_F2FS_FAULT_INJECTION
 	else if (struct_type == FAULT_INFO_RATE ||
 					struct_type == FAULT_INFO_TYPE)
@@ -496,9 +506,9 @@ out:
 	if (!strcmp(a->attr.name, "iostat_period_ms")) {
 		if (t < MIN_IOSTAT_PERIOD_MS || t > MAX_IOSTAT_PERIOD_MS)
 			return -EINVAL;
-		spin_lock(&sbi->iostat_lock);
+		spin_lock_irq(&sbi->iostat_lock);
 		sbi->iostat_period_ms = (unsigned int)t;
-		spin_unlock(&sbi->iostat_lock);
+		spin_unlock_irq(&sbi->iostat_lock);
 		return count;
 	}
 
@@ -707,6 +717,7 @@ F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, gc_urgent, gc_mode);
 F2FS_RW_ATTR(SM_INFO, f2fs_sm_info, reclaim_segments, rec_prefree_segments);
 F2FS_RW_ATTR(DCC_INFO, discard_cmd_control, max_small_discards, max_discards);
 F2FS_RW_ATTR(DCC_INFO, discard_cmd_control, discard_granularity, discard_granularity);
+F2FS_RW_ATTR(DCC_INFO, discard_cmd_control, discard_type, discard_type);
 F2FS_RW_ATTR(RESERVED_BLOCKS, f2fs_sb_info, reserved_blocks, reserved_blocks);
 F2FS_RW_ATTR(SM_INFO, f2fs_sm_info, batched_trim_sections, trim_sections);
 F2FS_RW_ATTR(SM_INFO, f2fs_sm_info, ipu_policy, ipu_policy);
@@ -734,6 +745,26 @@ F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, readdir_ra, readdir_ra);
 F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, max_io_bytes, max_io_bytes);
 F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, gc_pin_file_thresh, gc_pin_file_threshold);
 F2FS_RW_ATTR(F2FS_SBI, f2fs_super_block, extension_list, extension_list);
+#ifdef CONFIG_F2FS_GRADING_SSR
+F2FS_RW_ATTR(F2FS_HOT_COLD_PARAMS, f2fs_hot_cold_params,
+		hc_hot_data_lower_limit, hot_data_lower_limit);
+F2FS_RW_ATTR(F2FS_HOT_COLD_PARAMS, f2fs_hot_cold_params,
+		hc_hot_data_waterline, hot_data_waterline);
+F2FS_RW_ATTR(F2FS_HOT_COLD_PARAMS, f2fs_hot_cold_params,
+		hc_warm_data_lower_limit, warm_data_lower_limit);
+F2FS_RW_ATTR(F2FS_HOT_COLD_PARAMS, f2fs_hot_cold_params,
+		hc_warm_data_waterline, warm_data_waterline);
+F2FS_RW_ATTR(F2FS_HOT_COLD_PARAMS, f2fs_hot_cold_params,
+		hc_hot_node_lower_limit, hot_node_lower_limit);
+F2FS_RW_ATTR(F2FS_HOT_COLD_PARAMS, f2fs_hot_cold_params,
+		hc_hot_node_waterline, hot_node_waterline);
+F2FS_RW_ATTR(F2FS_HOT_COLD_PARAMS, f2fs_hot_cold_params,
+		hc_warm_node_lower_limit, warm_node_lower_limit);
+F2FS_RW_ATTR(F2FS_HOT_COLD_PARAMS, f2fs_hot_cold_params,
+		hc_warm_node_waterline, warm_node_waterline);
+F2FS_RW_ATTR(F2FS_HOT_COLD_PARAMS, f2fs_hot_cold_params,
+		hc_enable, enable);
+#endif
 #ifdef CONFIG_F2FS_FAULT_INJECTION
 F2FS_RW_ATTR(FAULT_INFO_RATE, f2fs_fault_info, inject_rate, inject_rate);
 F2FS_RW_ATTR(FAULT_INFO_TYPE, f2fs_fault_info, inject_type, inject_type);
@@ -822,7 +853,11 @@ static struct attribute *f2fs_attrs[] = {
 	ATTR_LIST(main_blkaddr),
 	ATTR_LIST(max_small_discards),
 	ATTR_LIST(discard_granularity),
+<<<<<<< HEAD
 	ATTR_LIST(pending_discard),
+=======
+	ATTR_LIST(discard_type),
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	ATTR_LIST(batched_trim_sections),
 	ATTR_LIST(ipu_policy),
 	ATTR_LIST(min_ipu_util),
@@ -873,6 +908,7 @@ static struct attribute *f2fs_attrs[] = {
 	ATTR_LIST(moved_blocks_background),
 	ATTR_LIST(avg_vblocks),
 #endif
+<<<<<<< HEAD
 #ifdef CONFIG_F2FS_FS_COMPRESSION
 	ATTR_LIST(compr_written_block),
 	ATTR_LIST(compr_saved_block),
@@ -888,6 +924,19 @@ static struct attribute *f2fs_attrs[] = {
 	ATTR_LIST(hot_data_age_threshold),
 	ATTR_LIST(warm_data_age_threshold),
 	ATTR_LIST(last_age_weight),
+=======
+#ifdef CONFIG_F2FS_GRADING_SSR
+	ATTR_LIST(hc_hot_data_lower_limit),
+	ATTR_LIST(hc_hot_data_waterline),
+	ATTR_LIST(hc_warm_data_lower_limit),
+	ATTR_LIST(hc_warm_data_waterline),
+	ATTR_LIST(hc_hot_node_lower_limit),
+	ATTR_LIST(hc_hot_node_waterline),
+	ATTR_LIST(hc_warm_node_lower_limit),
+	ATTR_LIST(hc_warm_node_waterline),
+	ATTR_LIST(hc_enable),
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	NULL,
 };
 ATTRIBUTE_GROUPS(f2fs);
@@ -1229,6 +1278,66 @@ static int __maybe_unused victim_bits_seq_show(struct seq_file *seq,
 	return 0;
 }
 
+static int undiscard_info_seq_show(struct seq_file *seq, void *offset)
+{
+	struct super_block *sb = seq->private;
+	struct f2fs_sb_info *sbi = F2FS_SB(sb);
+	struct dirty_seglist_info *dirty_i = DIRTY_I(sbi);
+	struct sit_info *sit_i = SIT_I(sbi);
+	unsigned int total_segs = le32_to_cpu(sbi->raw_super->segment_count_main);
+	unsigned int total = 0;
+	unsigned int i, j;
+	unsigned int max_blocks = sbi->blocks_per_seg;
+	unsigned long *dmap = SIT_I(sbi)->tmp_map;
+
+	if (!f2fs_realtime_discard_enable(sbi))
+		goto out;
+
+	for (i = 0; i < total_segs; i++) {
+		struct seg_entry *se = get_seg_entry(sbi, i);
+		unsigned int entries = SIT_VBLOCK_MAP_SIZE /
+			sizeof(unsigned long);
+		unsigned long *ckpt_map = (unsigned long *)se->ckpt_valid_map;
+		unsigned long *discard_map = (unsigned long *)se->discard_map;
+		int start = 0, end = -1;
+
+		down_write(&sit_i->sentry_lock);
+		if (se->valid_blocks == max_blocks) {
+			up_write(&sit_i->sentry_lock);
+			continue;
+		}
+
+		if (se->valid_blocks == 0) {
+			mutex_lock(&dirty_i->seglist_lock);
+			if (test_bit((int)i, dirty_i->dirty_segmap[PRE]))
+				total += 512;
+			mutex_unlock(&dirty_i->seglist_lock);
+		} else {
+			for (j = 0; j < entries; j++)
+				dmap[j] = ~ckpt_map[j] & ~discard_map[j];
+			while (1) {
+				start = (int)find_rev_next_bit(dmap,
+					(unsigned long)max_blocks,
+					(unsigned long)(end + 1));
+
+				if ((unsigned int)start >= max_blocks)
+					break;
+
+				end = (int)find_rev_next_zero_bit(dmap,
+					(unsigned long)max_blocks,
+					(unsigned long)(start + 1));
+				total += (unsigned int)(end - start);
+			}
+		}
+
+		up_write(&sit_i->sentry_lock);
+	}
+
+out:
+	seq_printf(seq, "total undiscard:%u K\n", total * 4);
+	return 0;
+}
+
 int __init f2fs_init_sysfs(void)
 {
 	int ret;
@@ -1297,6 +1406,9 @@ int f2fs_register_sysfs(struct f2fs_sb_info *sbi)
 				iostat_info_seq_show, sb);
 		proc_create_single_data("victim_bits", S_IRUGO, sbi->s_proc,
 				victim_bits_seq_show, sb);
+		proc_create_single_data("undiscard_info", S_IRUGO, sbi->s_proc,
+				undiscard_info_seq_show, sb);
+
 	}
 	return 0;
 put_feature_list_kobj:
@@ -1318,6 +1430,7 @@ void f2fs_unregister_sysfs(struct f2fs_sb_info *sbi)
 		remove_proc_entry("segment_info", sbi->s_proc);
 		remove_proc_entry("segment_bits", sbi->s_proc);
 		remove_proc_entry("victim_bits", sbi->s_proc);
+		remove_proc_entry("undiscard_info", sbi->s_proc);
 		remove_proc_entry(sbi->sb->s_id, f2fs_proc_root);
 	}
 

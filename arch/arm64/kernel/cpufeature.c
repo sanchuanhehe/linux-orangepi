@@ -72,13 +72,19 @@
 #include <linux/types.h>
 #include <linux/mm.h>
 #include <linux/cpu.h>
+<<<<<<< HEAD
 #include <linux/kasan.h>
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 #include <asm/cpu.h>
 #include <asm/cpufeature.h>
 #include <asm/cpu_ops.h>
 #include <asm/fpsimd.h>
+<<<<<<< HEAD
 #include <asm/kvm_host.h>
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #include <asm/hwcap.h>
 #include <asm/mmu_context.h>
 #include <asm/mte.h>
@@ -113,6 +119,7 @@ EXPORT_SYMBOL(arm64_use_ng_mappings);
 
 DEFINE_PER_CPU_READ_MOSTLY(const char *, this_cpu_vector) = vectors;
 
+<<<<<<< HEAD
 /*
  * Permit PER_LINUX32 and execve() of 32-bit binaries even if not all CPUs
  * support it?
@@ -131,6 +138,8 @@ DEFINE_STATIC_KEY_FALSE(arm64_mismatched_32bit_el0);
  */
 static cpumask_var_t cpu_32bit_el0_mask __cpumask_var_read_mostly;
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 /*
  * Flag to indicate if we have computed the system wide
  * capabilities based on the boot time active CPUs. This
@@ -644,8 +653,12 @@ static const struct __ftr_reg_entry {
 
 	/* Op1 = 0, CRn = 0, CRm = 6 */
 	ARM64_FTR_REG(SYS_ID_AA64ISAR0_EL1, ftr_id_aa64isar0),
+<<<<<<< HEAD
 	ARM64_FTR_REG_OVERRIDE(SYS_ID_AA64ISAR1_EL1, ftr_id_aa64isar1,
 			       &id_aa64isar1_override),
+=======
+	ARM64_FTR_REG(SYS_ID_AA64ISAR1_EL1, ftr_id_aa64isar1),
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	ARM64_FTR_REG(SYS_ID_AA64ISAR2_EL1, ftr_id_aa64isar2),
 
 	/* Op1 = 0, CRn = 0, CRm = 7 */
@@ -1578,7 +1591,11 @@ kpti_install_ng_mappings(const struct arm64_cpu_capabilities *__unused)
 	if (arm64_use_ng_mappings)
 		return;
 
+<<<<<<< HEAD
 	remap_fn = (void *)__pa_function(idmap_kpti_install_ng_mappings);
+=======
+	remap_fn = (void *)__pa_symbol(function_nocfi(idmap_kpti_install_ng_mappings));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	cpu_install_idmap();
 	remap_fn(cpu, num_online_cpus(), __pa_symbol(swapper_pg_dir));
@@ -1883,6 +1900,7 @@ static void cpu_enable_mte(struct arm64_cpu_capabilities const *cap)
 }
 #endif /* CONFIG_ARM64_MTE */
 
+<<<<<<< HEAD
 #ifdef CONFIG_KVM
 static bool is_kvm_protected_mode(const struct arm64_cpu_capabilities *entry, int __unused)
 {
@@ -1898,6 +1916,8 @@ static bool is_kvm_protected_mode(const struct arm64_cpu_capabilities *entry, in
 }
 #endif /* CONFIG_KVM */
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 static void elf_hwcap_fixup(void)
 {
 #ifdef CONFIG_ARM64_ERRATUM_1742098
@@ -3084,9 +3104,12 @@ int do_emulate_mrs(struct pt_regs *regs, u32 sys_reg, u32 rt)
 	return rc;
 }
 
-static int emulate_mrs(struct pt_regs *regs, u32 insn)
+bool try_emulate_mrs(struct pt_regs *regs, u32 insn)
 {
 	u32 sys_reg, rt;
+
+	if (compat_user_mode(regs) || !aarch64_insn_is_mrs(insn))
+		return false;
 
 	/*
 	 * sys_reg values are defined as used in mrs/msr instruction.
@@ -3094,9 +3117,10 @@ static int emulate_mrs(struct pt_regs *regs, u32 insn)
 	 */
 	sys_reg = (u32)aarch64_insn_decode_immediate(AARCH64_INSN_IMM_16, insn) << 5;
 	rt = aarch64_insn_decode_register(AARCH64_INSN_REGTYPE_RT, insn);
-	return do_emulate_mrs(regs, sys_reg, rt);
+	return do_emulate_mrs(regs, sys_reg, rt) == 0;
 }
 
+<<<<<<< HEAD
 static struct undef_hook mrs_hook = {
 	.instr_mask = 0xfff00000,
 	.instr_val  = 0xd5300000,
@@ -3124,6 +3148,8 @@ enum mitigation_state arm64_get_meltdown_state(void)
 	return SPECTRE_VULNERABLE;
 }
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 ssize_t cpu_show_meltdown(struct device *dev, struct device_attribute *attr,
 			  char *buf)
 {

@@ -1165,7 +1165,11 @@
 		status = "disabled";
 	};
 
+<<<<<<< HEAD
 	spdif_2ch: sound@ff880000 {
+=======
+	spdif: sound@ff8b0000 {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		compatible = "rockchip,rk3288-spdif", "rockchip,rk3066-spdif";
 		reg = <0x0 0xff880000 0x0 0x10000>;
 		#sound-dai-cells = <0>;
@@ -1200,6 +1204,7 @@
 		status = "disabled";
 	};
 
+<<<<<<< HEAD
 	rng: rng@ff8a0000 {
 		compatible = "rockchip,cryptov1-rng";
 		reg = <0x0 0xff8a0000 0x0 0x4000>;
@@ -1210,6 +1215,8 @@
 		status = "disabled";
 	};
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	crypto: crypto@ff8a0000 {
 		compatible = "rockchip,rk3288-crypto";
 		reg = <0x0 0xff8a0000 0x0 0x4000>;
@@ -1566,11 +1573,18 @@
 		compatible = "rockchip,rk3288-dp";
 		reg = <0x0 0xff970000 0x0 0x4000>;
 		interrupts = <GIC_SPI 98 IRQ_TYPE_LEVEL_HIGH>;
+<<<<<<< HEAD
 		clocks = <&cru SCLK_EDP_24M>, <&cru PCLK_EDP_CTRL>,
 			 <&cru SCLK_EDP>;
 		clock-names = "dp", "pclk", "spdif";
 		assigned-clocks = <&cru SCLK_EDP_24M>;
 		assigned-clock-parents = <&xin24m>;
+=======
+		clocks = <&cru SCLK_EDP>, <&cru PCLK_EDP_CTRL>;
+		clock-names = "dp", "pclk";
+		phys = <&edp_phy>;
+		phy-names = "dp";
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		power-domains = <&power RK3288_PD_VIO>;
 		resets = <&cru SRST_EDP>;
 		reset-names = "dp";

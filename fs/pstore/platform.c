@@ -16,6 +16,10 @@
 #include <linux/console.h>
 #include <linux/module.h>
 #include <linux/pstore.h>
+#ifdef CONFIG_PSTORE_BLACKBOX
+#include <linux/stacktrace.h>
+#include <linux/blackbox.h>
+#endif
 #if IS_ENABLED(CONFIG_PSTORE_LZO_COMPRESS)
 #include <linux/lzo.h>
 #endif
@@ -58,9 +62,13 @@ static const char * const pstore_type_names[] = {
 	"powerpc-common",
 	"pmsg",
 	"powerpc-opal",
+<<<<<<< HEAD
 #ifdef CONFIG_PSTORE_BOOT_LOG
 	"boot-log",
 #endif
+=======
+	"blackbox",
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 };
 
 static int pstore_new_entry;
@@ -146,21 +154,22 @@ static void pstore_timer_kick(void)
 	mod_timer(&pstore_timer, jiffies + msecs_to_jiffies(pstore_update_ms));
 }
 
-/*
- * Should pstore_dump() wait for a concurrent pstore_dump()? If
- * not, the current pstore_dump() will report a failure to dump
- * and return.
- */
-static bool pstore_cannot_wait(enum kmsg_dump_reason reason)
+static bool pstore_cannot_block_path(enum kmsg_dump_reason reason)
 {
-	/* In NMI path, pstore shouldn't block regardless of reason. */
+	/*
+	 * In case of NMI path, pstore shouldn't be blocked
+	 * regardless of reason.
+	 */
 	if (in_nmi())
 		return true;
 
 	switch (reason) {
 	/* In panic case, other cpus are stopped by smp_send_stop(). */
 	case KMSG_DUMP_PANIC:
-	/* Emergency restart shouldn't be blocked. */
+	/*
+	 * Emergency restart shouldn't be blocked by spinning on
+	 * pstore_info::buf_lock.
+	 */
 	case KMSG_DUMP_EMERG:
 		return true;
 	default:
@@ -382,6 +391,113 @@ void pstore_record_init(struct pstore_record *record,
 }
 
 /*
+ * Store the customised fault log
+ */
+#ifdef CONFIG_PSTORE_BLACKBOX
+#define PSTORE_FLAG           "PSTORE"
+#define CALLSTACK_MAX_ENTRIES 20
+static void dump_stacktrace(char *pbuf, size_t buf_size, bool is_panic)
+{
+	int i;
+	size_t stack_len = 0;
+	size_t com_len = 0;
+	unsigned long entries[CALLSTACK_MAX_ENTRIES];
+	unsigned int nr_entries;
+	char tmp_buf[ERROR_DESC_MAX_LEN];
+	bool find_panic = false;
+
+	if (unlikely(!pbuf || !buf_size))
+		return;
+
+	memset(pbuf, 0, buf_size);
+	memset(tmp_buf, 0, sizeof(tmp_buf));
+	nr_entries = stack_trace_save(entries, ARRAY_SIZE(entries), 0);
+	com_len = scnprintf(pbuf, buf_size, "Comm:%s,CPU:%d,Stack:",
+						current->comm, raw_smp_processor_id());
+	for (i = 0; i < nr_entries; i++) {
+		if (stack_len >= sizeof(tmp_buf)) {
+			tmp_buf[sizeof(tmp_buf) - 1] = '\0';
+			break;
+		}
+		stack_len += scnprintf(tmp_buf + stack_len, sizeof(tmp_buf) - stack_len,
+				"%pS-", (void *)entries[i]);
+		if (!find_panic && is_panic) {
+			if (strncmp(tmp_buf, "panic", strlen("panic")) == 0)
+				find_panic = true;
+			else
+				(void)memset(tmp_buf, 0, sizeof(tmp_buf));
+		}
+	}
+	if (com_len >= buf_size)
+		return;
+	stack_len = min(buf_size - com_len, strlen(tmp_buf));
+	memcpy(pbuf + com_len, tmp_buf, stack_len);
+	*(pbuf + buf_size - 1) = '\0';
+}
+
+void pstore_blackbox_dump(struct kmsg_dumper *dumper, enum kmsg_dump_reason reason)
+{
+	struct fault_log_info *pfault_log_info;
+	struct pstore_record record;
+	size_t dst_size;
+	const char *why;
+	char *dst;
+	unsigned long	flags = 0;
+	int ret;
+
+#if defined(CONFIG_PSTORE_BLK) || defined(CONFIG_PSTORE_RAM)
+	if (!pstore_ready)
+		return;
+#endif
+
+	why = kmsg_dump_reason_str(reason);
+
+	if (pstore_cannot_block_path(reason)) {
+		if (!spin_trylock_irqsave(&psinfo->buf_lock, flags)) {
+			pr_err("dump skipped in %s path because of concurrent dump\n",
+					in_nmi() ? "NMI" : why);
+			return;
+		}
+	} else {
+		spin_lock_irqsave(&psinfo->buf_lock, flags);
+	}
+
+	pfault_log_info = (struct fault_log_info *)psinfo->buf;
+
+	memset(pfault_log_info, 0, sizeof(*pfault_log_info));
+
+	pstore_record_init(&record, psinfo);
+
+	record.type = PSTORE_TYPE_BLACKBOX;
+	record.reason = reason;
+
+	memcpy(pfault_log_info->flag, LOG_FLAG, strlen(LOG_FLAG));
+	strncpy(pfault_log_info->info.event, why,
+					min(strlen(why), sizeof(pfault_log_info->info.event) - 1));
+	strncpy(pfault_log_info->info.module, PSTORE_FLAG,
+					min(strlen(PSTORE_FLAG), sizeof(pfault_log_info->info.module) - 1));
+	get_timestamp(pfault_log_info->info.error_time, TIMESTAMP_MAX_LEN);
+	dump_stacktrace(pfault_log_info->info.error_desc, sizeof(pfault_log_info->info.error_desc), false);
+
+	record.buf = psinfo->buf;
+
+	dst = psinfo->buf;
+	dst_size = psinfo->bufsize;
+
+	dst_size -= sizeof(struct fault_log_info);
+
+	(void)kmsg_dump_get_buffer(dumper, true, dst + sizeof(struct fault_log_info), dst_size,
+				   &(pfault_log_info->len));
+
+	record.size = sizeof(struct fault_log_info) + pfault_log_info->len;
+	ret = psinfo->write(&record);
+
+	spin_unlock_irqrestore(&psinfo->buf_lock, flags);
+}
+EXPORT_SYMBOL_GPL(pstore_blackbox_dump);
+#endif
+
+/*
  * callback from kmsg_dump. Save as much as we can (up to kmsg_bytes) from the
  * end of the buffer.
  */
@@ -391,21 +507,19 @@ static void pstore_dump(struct kmsg_dumper *dumper,
 	unsigned long	total = 0;
 	const char	*why;
 	unsigned int	part = 1;
+	unsigned long	flags = 0;
 	int		ret;
 
 	why = kmsg_dump_reason_str(reason);
 
-	if (down_trylock(&psinfo->buf_lock)) {
-		/* Failed to acquire lock: give up if we cannot wait. */
-		if (pstore_cannot_wait(reason)) {
-			pr_err("dump skipped in %s path: may corrupt error record\n",
-				in_nmi() ? "NMI" : why);
+	if (pstore_cannot_block_path(reason)) {
+		if (!spin_trylock_irqsave(&psinfo->buf_lock, flags)) {
+			pr_err("dump skipped in %s path because of concurrent dump\n",
+					in_nmi() ? "NMI" : why);
 			return;
 		}
-		if (down_interruptible(&psinfo->buf_lock)) {
-			pr_err("could not grab semaphore?!\n");
-			return;
-		}
+	} else {
+		spin_lock_irqsave(&psinfo->buf_lock, flags);
 	}
 
 	oopscount++;
@@ -468,7 +582,7 @@ static void pstore_dump(struct kmsg_dumper *dumper,
 		part++;
 	}
 
-	up(&psinfo->buf_lock);
+	spin_unlock_irqrestore(&psinfo->buf_lock, flags);
 }
 
 static struct kmsg_dumper pstore_dumper = {
@@ -563,6 +677,8 @@ out:
  */
 int pstore_register(struct pstore_info *psi)
 {
+	char *new_backend;
+
 	if (backend && strcmp(backend, psi->name)) {
 		pr_warn("ignoring unexpected backend '%s'\n", psi->name);
 		return -EPERM;
@@ -582,11 +698,16 @@ int pstore_register(struct pstore_info *psi)
 		return -EINVAL;
 	}
 
+	new_backend = kstrdup(psi->name, GFP_KERNEL);
+	if (!new_backend)
+		return -ENOMEM;
+
 	mutex_lock(&psinfo_lock);
 	if (psinfo) {
 		pr_warn("backend '%s' already loaded: ignoring '%s'\n",
 			psinfo->name, psi->name);
 		mutex_unlock(&psinfo_lock);
+		kfree(new_backend);
 		return -EBUSY;
 	}
 
@@ -594,7 +715,7 @@ int pstore_register(struct pstore_info *psi)
 		psi->write_user = pstore_write_user_compat;
 	psinfo = psi;
 	mutex_init(&psinfo->read_mutex);
-	sema_init(&psinfo->buf_lock, 1);
+	spin_lock_init(&psinfo->buf_lock);
 
 	if (psi->flags & PSTORE_FLAGS_DMESG)
 		allocate_buf_for_compression();
@@ -619,7 +740,7 @@ int pstore_register(struct pstore_info *psi)
 	 * Update the module parameter backend, so it is visible
 	 * through /sys/module/pstore/parameters/backend
 	 */
-	backend = kstrdup(psi->name, GFP_KERNEL);
+	backend = new_backend;
 
 	pr_info("Registered %s as persistent store backend\n", psi->name);
 

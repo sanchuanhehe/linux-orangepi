@@ -5,6 +5,7 @@
 #include <linux/sched.h>
 #include <linux/xarray.h>
 
+<<<<<<< HEAD
 #ifdef __GENKSYMS__
 /*
  * ANDROID ABI HACK
@@ -67,6 +68,8 @@ struct io_uring_task {
 #endif	/* ANDROID ABI HACK */
 
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #if defined(CONFIG_IO_URING)
 struct sock *io_uring_get_socket(struct file *file);
 void __io_uring_cancel(bool cancel_all);

@@ -10,7 +10,10 @@
 
 / {
 	model = "fsl,T1040RDB-REV-A";
+<<<<<<< HEAD
 	compatible = "fsl,T1040RDB-REV-A";
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 };
 
 &seville_port0 {

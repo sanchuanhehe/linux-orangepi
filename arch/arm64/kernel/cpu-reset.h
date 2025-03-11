@@ -22,7 +22,11 @@ static inline void __noreturn __nocfi cpu_soft_restart(unsigned long entry,
 
 	unsigned long el2_switch = !is_kernel_in_hyp_mode() &&
 		is_hyp_mode_available();
+<<<<<<< HEAD
 	restart = (void *)__pa_function(__cpu_soft_restart);
+=======
+	restart = (void *)__pa_symbol(function_nocfi(__cpu_soft_restart));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	cpu_install_idmap();
 	restart(el2_switch, entry, arg0, arg1, arg2);

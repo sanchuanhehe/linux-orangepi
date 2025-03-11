@@ -228,6 +228,7 @@ static inline bool selinux_policycap_ioctl_skip_cloexec(void)
 	return READ_ONCE(state->policycap[POLICYDB_CAPABILITY_IOCTL_SKIP_CLOEXEC]);
 }
 
+<<<<<<< HEAD
 static inline bool selinux_android_nlroute_getlink(void)
 {
 	struct selinux_state *state = &selinux_state;
@@ -242,6 +243,8 @@ static inline bool selinux_android_nlroute_getneigh(void)
 	return state->android_netlink_getneigh;
 }
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 struct selinux_policy_convert_data;
 
 struct selinux_load_state {

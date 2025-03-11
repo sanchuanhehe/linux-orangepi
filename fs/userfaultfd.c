@@ -15,7 +15,11 @@
 #include <linux/sched/signal.h>
 #include <linux/sched/mm.h>
 #include <linux/mm.h>
+<<<<<<< HEAD
 #include <linux/mmu_notifier.h>
+=======
+#include <linux/mm_inline.h>
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #include <linux/poll.h>
 #include <linux/slab.h>
 #include <linux/seq_file.h>
@@ -879,8 +883,12 @@ static int userfaultfd_release(struct inode *inode, struct file *file)
 				 new_flags, vma->anon_vma,
 				 vma->vm_file, vma->vm_pgoff,
 				 vma_policy(vma),
+<<<<<<< HEAD
 				 NULL_VM_UFFD_CTX,
 				 vma_get_anon_name(vma));
+=======
+				 NULL_VM_UFFD_CTX, anon_vma_name(vma));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		if (prev)
 			vma = prev;
 		else
@@ -986,8 +994,13 @@ static int resolve_userfault_fork(struct userfaultfd_ctx *new,
 {
 	int fd;
 
+<<<<<<< HEAD
 	fd = anon_inode_getfd_secure("[userfaultfd]", &userfaultfd_fops, new,
 			O_RDONLY | (new->flags & UFFD_SHARED_FCNTL_FLAGS), inode);
+=======
+	fd = anon_inode_getfd("[userfaultfd]", &userfaultfd_fops, new,
+			      O_RDONLY | (new->flags & UFFD_SHARED_FCNTL_FLAGS));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (fd < 0)
 		return fd;
 
@@ -1438,7 +1451,11 @@ static int userfaultfd_register(struct userfaultfd_ctx *ctx,
 				 vma->anon_vma, vma->vm_file, vma->vm_pgoff,
 				 vma_policy(vma),
 				 ((struct vm_userfaultfd_ctx){ ctx }),
+<<<<<<< HEAD
 				 vma_get_anon_name(vma));
+=======
+				 anon_vma_name(vma));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		if (prev) {
 			vma = prev;
 			goto next;
@@ -1617,8 +1634,12 @@ static int userfaultfd_unregister(struct userfaultfd_ctx *ctx,
 		prev = vma_merge(mm, prev, start, vma_end, new_flags,
 				 vma->anon_vma, vma->vm_file, vma->vm_pgoff,
 				 vma_policy(vma),
+<<<<<<< HEAD
 				 NULL_VM_UFFD_CTX,
 				 vma_get_anon_name(vma));
+=======
+				 NULL_VM_UFFD_CTX, anon_vma_name(vma));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		if (prev) {
 			vma = prev;
 			goto next;
@@ -2100,8 +2121,13 @@ SYSCALL_DEFINE1(userfaultfd, int, flags)
 	/* prevent the mm struct to be freed */
 	mmgrab(ctx->mm);
 
+<<<<<<< HEAD
 	fd = anon_inode_getfd_secure("[userfaultfd]", &userfaultfd_fops, ctx,
 			O_RDONLY | (flags & UFFD_SHARED_FCNTL_FLAGS), NULL);
+=======
+	fd = anon_inode_getfd("[userfaultfd]", &userfaultfd_fops, ctx,
+			      O_RDONLY | (flags & UFFD_SHARED_FCNTL_FLAGS));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (fd < 0) {
 		mmdrop(ctx->mm);
 		kmem_cache_free(userfaultfd_ctx_cachep, ctx);

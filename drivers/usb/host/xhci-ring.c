@@ -777,7 +777,7 @@ static void xhci_giveback_urb_in_irq(struct xhci_hcd *xhci,
 static void xhci_unmap_td_bounce_buffer(struct xhci_hcd *xhci,
 		struct xhci_ring *ring, struct xhci_td *td)
 {
-	struct device *dev = xhci_to_hcd(xhci)->self.controller;
+	struct device *dev = xhci_to_hcd(xhci)->self.sysdev;
 	struct xhci_segment *seg = td->bounce_seg;
 	struct urb *urb = td->urb;
 	size_t len;
@@ -830,10 +830,15 @@ static int xhci_td_cleanup(struct xhci_hcd *xhci, struct xhci_td *td,
 		urb->actual_length = 0;
 		status = 0;
 	}
+<<<<<<< HEAD
 	/* TD might be removed from td_list if we are giving back a cancelled URB */
 	if (!list_empty(&td->td_list))
 		list_del_init(&td->td_list);
 	/* Giving back a cancelled URB, or if a slated TD completed anyway */
+=======
+	list_del_init(&td->td_list);
+	/* Was this TD slated to be cancelled but completed anyway? */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (!list_empty(&td->cancelled_td_list))
 		list_del_init(&td->cancelled_td_list);
 
@@ -856,6 +861,7 @@ static int xhci_td_cleanup(struct xhci_hcd *xhci, struct xhci_td *td,
 	return 0;
 }
 
+<<<<<<< HEAD
 
 /* Complete the cancelled URBs we unlinked from td_list. */
 static void xhci_giveback_invalidated_tds(struct xhci_virt_ep *ep)
@@ -881,6 +887,8 @@ static void xhci_giveback_invalidated_tds(struct xhci_virt_ep *ep)
 	}
 }
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 static int xhci_reset_halted_ep(struct xhci_hcd *xhci, unsigned int slot_id,
 				unsigned int ep_index, enum xhci_ep_reset_type reset_type)
 {
@@ -893,10 +901,13 @@ static int xhci_reset_halted_ep(struct xhci_hcd *xhci, unsigned int slot_id,
 		goto done;
 	}
 
+<<<<<<< HEAD
 	xhci_dbg(xhci, "%s-reset ep %u, slot %u\n",
 		 (reset_type == EP_HARD_RESET) ? "Hard" : "Soft",
 		 ep_index, slot_id);
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	ret = xhci_queue_reset_ep(xhci, command, slot_id, ep_index, reset_type);
 done:
 	if (ret)
@@ -905,7 +916,11 @@ done:
 	return ret;
 }
 
+<<<<<<< HEAD
 static int xhci_handle_halted_endpoint(struct xhci_hcd *xhci,
+=======
+static void xhci_handle_halted_endpoint(struct xhci_hcd *xhci,
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 				struct xhci_virt_ep *ep, unsigned int stream_id,
 				struct xhci_td *td,
 				enum xhci_ep_reset_type reset_type)
@@ -918,6 +933,7 @@ static int xhci_handle_halted_endpoint(struct xhci_hcd *xhci,
 	 * Device will be reset soon to recover the link so don't do anything
 	 */
 	if (ep->vdev->flags & VDEV_PORT_ERROR)
+<<<<<<< HEAD
 		return -ENODEV;
 
 	/* add td to cancelled list and let reset ep handler take care of it */
@@ -944,6 +960,22 @@ static int xhci_handle_halted_endpoint(struct xhci_hcd *xhci,
 	xhci_ring_cmd_db(xhci);
 
 	return 0;
+=======
+		return;
+
+	ep->ep_state |= EP_HALTED;
+
+	err = xhci_reset_halted_ep(xhci, slot_id, ep->ep_index, reset_type);
+	if (err)
+		return;
+
+	if (reset_type == EP_HARD_RESET) {
+		ep->ep_state |= EP_HARD_CLEAR_TOGGLE;
+		xhci_cleanup_stalled_ring(xhci, slot_id, ep->ep_index, stream_id,
+					  td);
+	}
+	xhci_ring_cmd_db(xhci);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 /*
@@ -951,29 +983,47 @@ static int xhci_handle_halted_endpoint(struct xhci_hcd *xhci,
  * We have the xHCI lock, so nothing can modify this list until we drop it.
  * We're also in the event handler, so we can't get re-interrupted if another
  * Stop Endpoint command completes.
+<<<<<<< HEAD
  *
  * only call this when ring is not in a running state
  */
 
 static int xhci_invalidate_cancelled_tds(struct xhci_virt_ep *ep)
+=======
+ */
+
+static int xhci_invalidate_cancelled_tds(struct xhci_virt_ep *ep,
+					 struct xhci_dequeue_state *deq_state)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	struct xhci_hcd		*xhci;
 	struct xhci_td		*td = NULL;
 	struct xhci_td		*tmp_td = NULL;
+<<<<<<< HEAD
 	struct xhci_td		*cached_td = NULL;
 	struct xhci_ring	*ring;
 	u64			hw_deq;
 	unsigned int		slot_id = ep->vdev->slot_id;
 	int			err;
+=======
+	struct xhci_ring	*ring;
+	u64			hw_deq;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	xhci = ep->xhci;
 
 	list_for_each_entry_safe(td, tmp_td, &ep->cancelled_td_list, cancelled_td_list) {
 		xhci_dbg_trace(xhci, trace_xhci_dbg_cancel_urb,
+<<<<<<< HEAD
 			       "Removing canceled TD starting at 0x%llx (dma) in stream %u URB %p",
 			       (unsigned long long)xhci_trb_virt_to_dma(
 				       td->start_seg, td->first_trb),
 			       td->urb->stream_id, td->urb);
+=======
+				"Removing canceled TD starting at 0x%llx (dma).",
+				(unsigned long long)xhci_trb_virt_to_dma(
+					td->start_seg, td->first_trb));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		list_del_init(&td->td_list);
 		ring = xhci_urb_to_transfer_ring(xhci, td->urb);
 		if (!ring) {
@@ -982,15 +1032,21 @@ static int xhci_invalidate_cancelled_tds(struct xhci_virt_ep *ep)
 			continue;
 		}
 		/*
+<<<<<<< HEAD
 		 * If a ring stopped on the TD we need to cancel then we have to
 		 * move the xHC endpoint ring dequeue pointer past this TD.
 		 * Rings halted due to STALL may show hw_deq is past the stalled
 		 * TD, but still require a set TR Deq command to flush xHC cache.
+=======
+		 * If ring stopped on the TD we need to cancel, then we have to
+		 * move the xHC endpoint ring dequeue pointer past this TD.
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		 */
 		hw_deq = xhci_get_hw_deq(xhci, ep->vdev, ep->ep_index,
 					 td->urb->stream_id);
 		hw_deq &= ~0xf;
 
+<<<<<<< HEAD
 		if (td->cancel_status == TD_HALTED ||
 		    trb_in_td(xhci, td->start_seg, td->first_trb, td->last_trb, hw_deq, false)) {
 			switch (td->cancel_status) {
@@ -1034,10 +1090,23 @@ static int xhci_invalidate_cancelled_tds(struct xhci_virt_ep *ep)
 			td_to_noop(xhci, ring, td, false);
 			td->cancel_status = TD_CLEARED;
 		}
+=======
+		if (trb_in_td(xhci, td->start_seg, td->first_trb,
+			      td->last_trb, hw_deq, false)) {
+			xhci_find_new_dequeue_state(xhci, ep->vdev->slot_id,
+						    ep->ep_index,
+						    td->urb->stream_id,
+						    td, deq_state);
+		} else {
+			td_to_noop(xhci, ring, td, false);
+		}
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	}
 	return 0;
 }
 
+<<<<<<< HEAD
 /*
  * Returns the TD the endpoint ring halted on.
  * Only call for non-running rings without streams.
@@ -1058,6 +1127,8 @@ static struct xhci_td *find_halted_td(struct xhci_virt_ep *ep)
 	return NULL;
 }
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 /*
  * When we get a command completion for a Stop Endpoint Command, we need to
  * unlink any cancelled TDs from the ring.  There are two ways to do that:
@@ -1074,10 +1145,15 @@ static void xhci_handle_cmd_stop_ep(struct xhci_hcd *xhci, int slot_id,
 	unsigned int ep_index;
 	struct xhci_virt_ep *ep;
 	struct xhci_ep_ctx *ep_ctx;
+<<<<<<< HEAD
 	struct xhci_td *td = NULL;
 	enum xhci_ep_reset_type reset_type;
 	struct xhci_command *command;
 	int err;
+=======
+	struct xhci_virt_device *vdev;
+	struct xhci_dequeue_state deq_state;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	if (unlikely(TRB_TO_SUSPEND_PORT(le32_to_cpu(trb->generic.field[3])))) {
 		if (!xhci->devs[slot_id])
@@ -1095,6 +1171,7 @@ static void xhci_handle_cmd_stop_ep(struct xhci_hcd *xhci, int slot_id,
 
 	trace_xhci_handle_cmd_stop_ep(ep_ctx);
 
+<<<<<<< HEAD
 	if (comp_code == COMP_CONTEXT_STATE_ERROR) {
 	/*
 	 * If stop endpoint command raced with a halting endpoint we need to
@@ -1148,6 +1225,19 @@ static void xhci_handle_cmd_stop_ep(struct xhci_hcd *xhci, int slot_id,
 	}
 	/* will queue a set TR deq if stopped on a cancelled, uncleared TD */
 	xhci_invalidate_cancelled_tds(ep);
+=======
+	last_unlinked_td = list_last_entry(&ep->cancelled_td_list,
+			struct xhci_td, cancelled_td_list);
+
+	if (list_empty(&ep->cancelled_td_list)) {
+		xhci_stop_watchdog_timer_in_irq(xhci, ep);
+		ring_doorbell_for_active_rings(xhci, slot_id, ep_index);
+		return;
+	}
+
+	xhci_invalidate_cancelled_tds(ep, &deq_state);
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	xhci_stop_watchdog_timer_in_irq(xhci, ep);
 
 	/* Otherwise ring the doorbell(s) to restart queued transfers */
@@ -1182,7 +1272,10 @@ static void xhci_kill_endpoint_urbs(struct xhci_hcd *xhci,
 	struct xhci_virt_ep *ep;
 	struct xhci_ring *ring;
 
-	ep = &xhci->devs[slot_id]->eps[ep_index];
+	ep = xhci_get_virt_ep(xhci, slot_id, ep_index);
+	if (!ep)
+		return;
+
 	if ((ep->ep_state & EP_HAS_STREAMS) ||
 			(ep->ep_state & EP_GETTING_NO_STREAMS)) {
 		int stream_id;
@@ -1981,7 +2074,7 @@ static void handle_port_status(struct xhci_hcd *xhci,
 			goto cleanup;
 		} else if (!test_bit(hcd_portnum, &bus_state->resuming_ports)) {
 			xhci_dbg(xhci, "resume HS port %d\n", port_id);
-			bus_state->resume_done[hcd_portnum] = jiffies +
+			port->resume_timestamp = jiffies +
 				msecs_to_jiffies(USB_RESUME_TIMEOUT);
 			set_bit(hcd_portnum, &bus_state->resuming_ports);
 			/* Do the rest in GetPortStatus after resume time delay.
@@ -1990,7 +2083,7 @@ static void handle_port_status(struct xhci_hcd *xhci,
 			 */
 			set_bit(HCD_FLAG_POLL_RH, &hcd->flags);
 			mod_timer(&hcd->rh_timer,
-				  bus_state->resume_done[hcd_portnum]);
+				  port->resume_timestamp);
 			usb_hcd_start_port_resume(&hcd->self, hcd_portnum);
 			bogus_port_status = true;
 		}
@@ -2002,7 +2095,7 @@ static void handle_port_status(struct xhci_hcd *xhci,
 	     (portsc & PORT_PLS_MASK) == XDEV_U1 ||
 	     (portsc & PORT_PLS_MASK) == XDEV_U2)) {
 		xhci_dbg(xhci, "resume SS port %d finished\n", port_id);
-		complete(&bus_state->u3exit_done[hcd_portnum]);
+		complete(&port->u3exit_done);
 		/* We've just brought the device into U0/1/2 through either the
 		 * Resume state after a device remote wakeup, or through the
 		 * U3Exit state after a host-initiated resume.  If it's a device
@@ -2027,10 +2120,9 @@ static void handle_port_status(struct xhci_hcd *xhci,
 	 * RExit to a disconnect state).  If so, let the the driver know it's
 	 * out of the RExit state.
 	 */
-	if (!DEV_SUPERSPEED_ANY(portsc) && hcd->speed < HCD_USB3 &&
-			test_and_clear_bit(hcd_portnum,
-				&bus_state->rexit_ports)) {
-		complete(&bus_state->rexit_done[hcd_portnum]);
+	if (hcd->speed < HCD_USB3 && port->rexit_active) {
+		complete(&port->rexit_done);
+		port->rexit_active = false;
 		bogus_port_status = true;
 		goto cleanup;
 	}
@@ -2257,6 +2349,7 @@ static int finish_td(struct xhci_hcd *xhci, struct xhci_virt_ep *ep,
 		 * stall later. Hub TT buffer should only be cleared for FS/LS
 		 * devices behind HS hubs for functional stalls.
 		 */
+<<<<<<< HEAD
 		if (ep->ep_index != 0)
 			xhci_clear_hub_tt_buffer(xhci, td, ep);
 
@@ -2274,6 +2367,21 @@ static int finish_td(struct xhci_hcd *xhci, struct xhci_virt_ep *ep,
 	ep_ring->num_trbs_free += td->num_trbs - 1;
 	inc_deq(xhci, ep_ring);
 
+=======
+		if ((ep->ep_index != 0) || (trb_comp_code != COMP_STALL_ERROR))
+			xhci_clear_hub_tt_buffer(xhci, td, ep);
+
+		xhci_handle_halted_endpoint(xhci, ep, ep_ring->stream_id, td,
+					     EP_HARD_RESET);
+	} else {
+		/* Update ring dequeue pointer */
+		ep_ring->dequeue = td->last_trb;
+		ep_ring->deq_seg = td->last_trb_seg;
+		ep_ring->num_trbs_free += td->num_trbs - 1;
+		inc_deq(xhci, ep_ring);
+	}
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	return xhci_td_cleanup(xhci, td, ep_ring, td->status);
 }
 
@@ -2416,6 +2524,9 @@ static int process_isoc_td(struct xhci_hcd *xhci, struct xhci_virt_ep *ep,
 	/* handle completion code */
 	switch (trb_comp_code) {
 	case COMP_SUCCESS:
+		/* Don't overwrite status if TD had an error, see xHCI 4.9.1 */
+		if (td->error_mid_td)
+			break;
 		if (remaining) {
 			frame->status = short_framestatus;
 			if (xhci->quirks & XHCI_TRUST_TX_LENGTH)
@@ -2431,9 +2542,13 @@ static int process_isoc_td(struct xhci_hcd *xhci, struct xhci_virt_ep *ep,
 	case COMP_BANDWIDTH_OVERRUN_ERROR:
 		frame->status = -ECOMM;
 		break;
-	case COMP_ISOCH_BUFFER_OVERRUN:
 	case COMP_BABBLE_DETECTED_ERROR:
+		sum_trbs_for_length = true;
+		fallthrough;
+	case COMP_ISOCH_BUFFER_OVERRUN:
 		frame->status = -EOVERFLOW;
+		if (ep_trb != td->last_trb)
+			td->error_mid_td = true;
 		break;
 	case COMP_INCOMPATIBLE_DEVICE_ERROR:
 	case COMP_STALL_ERROR:
@@ -2441,8 +2556,9 @@ static int process_isoc_td(struct xhci_hcd *xhci, struct xhci_virt_ep *ep,
 		break;
 	case COMP_USB_TRANSACTION_ERROR:
 		frame->status = -EPROTO;
+		sum_trbs_for_length = true;
 		if (ep_trb != td->last_trb)
-			return 0;
+			td->error_mid_td = true;
 		break;
 	case COMP_STOPPED:
 		sum_trbs_for_length = true;
@@ -2462,6 +2578,9 @@ static int process_isoc_td(struct xhci_hcd *xhci, struct xhci_virt_ep *ep,
 		break;
 	}
 
+	if (td->urb_length_set)
+		goto finish_td;
+
 	if (sum_trbs_for_length)
 		frame->actual_length = sum_trb_lengths(xhci, ep->ring, ep_trb) +
 			ep_trb_len - remaining;
@@ -2470,6 +2589,17 @@ static int process_isoc_td(struct xhci_hcd *xhci, struct xhci_virt_ep *ep,
 
 	td->urb->actual_length += frame->actual_length;
 
+<<<<<<< HEAD
+=======
+finish_td:
+	/* Don't give back TD yet if we encountered an error mid TD */
+	if (td->error_mid_td && ep_trb != td->last_trb) {
+		xhci_dbg(xhci, "Error mid isoc TD, wait for final completion event\n");
+		td->urb_length_set = true;
+		return 0;
+	}
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	return finish_td(xhci, ep, ep_ring, td, trb_comp_code);
 }
 
@@ -2518,7 +2648,7 @@ static int process_bulk_intr_td(struct xhci_hcd *xhci, struct xhci_virt_ep *ep,
 
 	switch (trb_comp_code) {
 	case COMP_SUCCESS:
-		ep_ring->err_count = 0;
+		ep->err_count = 0;
 		/* handle success with untransferred data as short packet */
 		if (ep_trb != td->last_trb || remaining) {
 			xhci_warn(xhci, "WARN Successful completion on short TX\n");
@@ -2544,7 +2674,7 @@ static int process_bulk_intr_td(struct xhci_hcd *xhci, struct xhci_virt_ep *ep,
 		break;
 	case COMP_USB_TRANSACTION_ERROR:
 		if (xhci->quirks & XHCI_NO_SOFT_RETRY ||
-		    (ep_ring->err_count++ > MAX_SOFT_RETRY) ||
+		    (ep->err_count++ > MAX_SOFT_RETRY) ||
 		    le32_to_cpu(slot_ctx->tt_info) & TT_SLOT)
 			break;
 
@@ -2625,8 +2755,19 @@ static int handle_tx_event(struct xhci_hcd *xhci,
 		case COMP_USB_TRANSACTION_ERROR:
 		case COMP_INVALID_STREAM_TYPE_ERROR:
 		case COMP_INVALID_STREAM_ID_ERROR:
+<<<<<<< HEAD
 			xhci_handle_halted_endpoint(xhci, ep, 0, NULL,
 						    EP_SOFT_RESET);
+=======
+			xhci_dbg(xhci, "Stream transaction error ep %u no id\n",
+				 ep_index);
+			if (ep->err_count++ > MAX_SOFT_RETRY)
+				xhci_handle_halted_endpoint(xhci, ep, 0, NULL,
+							    EP_HARD_RESET);
+			else
+				xhci_handle_halted_endpoint(xhci, ep, 0, NULL,
+							    EP_SOFT_RESET);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			goto cleanup;
 		case COMP_RING_UNDERRUN:
 		case COMP_RING_OVERRUN:
@@ -2847,17 +2988,51 @@ static int handle_tx_event(struct xhci_hcd *xhci,
 		}
 
 		if (!ep_seg) {
-			if (!ep->skip ||
-			    !usb_endpoint_xfer_isoc(&td->urb->ep->desc)) {
-				/* Some host controllers give a spurious
-				 * successful event after a short transfer.
-				 * Ignore it.
-				 */
-				if ((xhci->quirks & XHCI_SPURIOUS_SUCCESS) &&
-						ep_ring->last_td_was_short) {
-					ep_ring->last_td_was_short = false;
-					goto cleanup;
+
+			if (ep->skip && usb_endpoint_xfer_isoc(&td->urb->ep->desc)) {
+				skip_isoc_td(xhci, td, ep, status);
+				goto cleanup;
+			}
+
+			/*
+			 * Some hosts give a spurious success event after a short
+			 * transfer. Ignore it.
+			 */
+			if ((xhci->quirks & XHCI_SPURIOUS_SUCCESS) &&
+			    ep_ring->last_td_was_short) {
+				ep_ring->last_td_was_short = false;
+				goto cleanup;
+			}
+
+			/*
+			 * xhci 4.10.2 states isoc endpoints should continue
+			 * processing the next TD if there was an error mid TD.
+			 * So host like NEC don't generate an event for the last
+			 * isoc TRB even if the IOC flag is set.
+			 * xhci 4.9.1 states that if there are errors in mult-TRB
+			 * TDs xHC should generate an error for that TRB, and if xHC
+			 * proceeds to the next TD it should genete an event for
+			 * any TRB with IOC flag on the way. Other host follow this.
+			 * So this event might be for the next TD.
+			 */
+			if (td->error_mid_td &&
+			    !list_is_last(&td->td_list, &ep_ring->td_list)) {
+				struct xhci_td *td_next = list_next_entry(td, td_list);
+
+				ep_seg = trb_in_td(xhci, td_next->start_seg, td_next->first_trb,
+						   td_next->last_trb, ep_trb_dma, false);
+				if (ep_seg) {
+					/* give back previous TD, start handling new */
+					xhci_dbg(xhci, "Missing TD completion event after mid TD error\n");
+					ep_ring->dequeue = td->last_trb;
+					ep_ring->deq_seg = td->last_trb_seg;
+					inc_deq(xhci, ep_ring);
+					xhci_td_cleanup(xhci, td, ep_ring, td->status);
+					td = td_next;
 				}
+			}
+
+			if (!ep_seg) {
 				/* HC is busted, give up! */
 				xhci_err(xhci,
 					"ERROR Transfer event TRB DMA ptr not "
@@ -2869,9 +3044,12 @@ static int handle_tx_event(struct xhci_hcd *xhci,
 					  ep_trb_dma, true);
 				return -ESHUTDOWN;
 			}
+<<<<<<< HEAD
 
 			skip_isoc_td(xhci, td, ep, status);
 			goto cleanup;
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		}
 		if (trb_comp_code == COMP_SHORT_PACKET)
 			ep_ring->last_td_was_short = true;
@@ -3512,7 +3690,7 @@ static u32 xhci_td_remainder(struct xhci_hcd *xhci, int transferred,
 static int xhci_align_td(struct xhci_hcd *xhci, struct urb *urb, u32 enqd_len,
 			 u32 *trb_buff_len, struct xhci_segment *seg)
 {
-	struct device *dev = xhci_to_hcd(xhci)->self.controller;
+	struct device *dev = xhci_to_hcd(xhci)->self.sysdev;
 	unsigned int unalign;
 	unsigned int max_pkt;
 	u32 new_buff_len;

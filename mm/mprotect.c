@@ -32,8 +32,11 @@
 #include <asm/cacheflush.h>
 #include <asm/mmu_context.h>
 #include <asm/tlbflush.h>
+#include <linux/xpm.h>
 
+#include <trace/hooks/mm.h>
 #include "internal.h"
+#include <linux/hck/lite_hck_jit_memory.h>
 
 static unsigned long change_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 		unsigned long addr, unsigned long end, pgprot_t newprot,
@@ -137,6 +140,13 @@ static unsigned long change_pte_range(struct vm_area_struct *vma, pmd_t *pmd,
 					 !(vma->vm_flags & VM_SOFTDIRTY))) {
 				ptent = pte_mkwrite(ptent);
 			}
+
+			/* if exec added, check xpm integrity before set pte */
+			if(pte_user_mkexec(oldpte, ptent) &&
+				unlikely(xpm_integrity_validate_hook(vma, 0, addr,
+					vm_normal_page(vma, addr, oldpte))))
+				continue;
+
 			ptep_modify_prot_commit(vma, addr, pte, oldpte, ptent);
 			pages++;
 		} else if (is_swap_pte(oldpte)) {
@@ -454,7 +464,11 @@ mprotect_fixup(struct vm_area_struct *vma, struct vm_area_struct **pprev,
 	pgoff = vma->vm_pgoff + ((start - vma->vm_start) >> PAGE_SHIFT);
 	*pprev = vma_merge(mm, *pprev, start, end, newflags,
 			   vma->anon_vma, vma->vm_file, pgoff, vma_policy(vma),
+<<<<<<< HEAD
 			   vma->vm_userfaultfd_ctx, vma_get_anon_name(vma));
+=======
+			   vma->vm_userfaultfd_ctx, anon_vma_name(vma));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (*pprev) {
 		vma = *pprev;
 		VM_WARN_ON((vma->vm_flags ^ newflags) & ~VM_SOFTDIRTY);
@@ -521,7 +535,20 @@ static int do_mprotect_pkey(unsigned long start, size_t len,
 	const bool rier = (current->personality & READ_IMPLIES_EXEC) &&
 				(prot & PROT_READ);
 
+	error = 0;
+	trace_vendor_do_mprotect_pkey(prot, &error);
+	if (error)
+		return error;
+
 	start = untagged_addr(start);
+
+	if (prot & PROT_EXEC) {
+		CALL_HCK_LITE_HOOK(find_jit_memory_lhck, current, start, len, &error);
+		if (error) {
+			pr_info("JITINFO: mprotect protection triggered");
+			return error;
+		}
+	}
 
 	prot &= ~(PROT_GROWSDOWN|PROT_GROWSUP);
 	if (grows == (PROT_GROWSDOWN|PROT_GROWSUP)) /* can't be both */

@@ -148,6 +148,13 @@ retry:
 		if (gso_type & SKB_GSO_UDP)
 			nh_off -= thlen;
 
+<<<<<<< HEAD
+=======
+		/* Kernel has a special handling for GSO_BY_FRAGS. */
+		if (gso_size == GSO_BY_FRAGS)
+			return -EINVAL;
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		/* Too small packets are not really GSO ones. */
 		if (skb->len - nh_off > gso_size) {
 			shinfo->gso_size = gso_size;

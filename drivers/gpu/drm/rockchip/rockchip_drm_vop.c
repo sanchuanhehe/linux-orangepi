@@ -569,14 +569,22 @@ static inline uint32_t vop_read_lut(struct vop *vop, uint32_t offset)
 	return readl(vop->lut_regs + offset);
 }
 
-static bool has_rb_swapped(uint32_t format)
+static bool has_rb_swapped(uint32_t version, uint32_t format)
 {
 	switch (format) {
 	case DRM_FORMAT_XBGR8888:
 	case DRM_FORMAT_ABGR8888:
-	case DRM_FORMAT_BGR888:
 	case DRM_FORMAT_BGR565:
 		return true;
+	/*
+	 * full framework (IP version 3.x) only need rb swapped for RGB888 and
+	 * little framework (IP version 2.x) only need rb swapped for BGR888,
+	 * check for 3.x to also only rb swap BGR888 for unknown vop version
+	 */
+	case DRM_FORMAT_RGB888:
+		return VOP_MAJOR(version) == 3;
+	case DRM_FORMAT_BGR888:
+		return VOP_MAJOR(version) != 3;
 	default:
 		return false;
 	}
@@ -1639,6 +1647,7 @@ static void vop_crtc_atomic_disable(struct drm_crtc *crtc,
 
 	WARN_ON(vop->event);
 
+<<<<<<< HEAD
 	if (crtc->state->self_refresh_active) {
 		vop_crtc_atomic_disable_for_psr(crtc, old_state);
 		goto out;
@@ -1651,6 +1660,17 @@ static void vop_crtc_atomic_disable(struct drm_crtc *crtc,
 	VOP_CTRL_SET(vop, out_mode, ROCKCHIP_OUT_MODE_P888);
 	VOP_CTRL_SET(vop, afbdc_en, 0);
 	vop_disable_all_planes(vop);
+=======
+	if (crtc->state->self_refresh_active)
+		rockchip_drm_set_win_enabled(crtc, false);
+
+	if (crtc->state->self_refresh_active)
+		goto out;
+
+	mutex_lock(&vop->vop_lock);
+
+	drm_crtc_vblank_off(crtc);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	/*
 	 * Vop standby will take effect at end of current frame,
@@ -1691,6 +1711,11 @@ static void vop_crtc_atomic_disable(struct drm_crtc *crtc,
 
 	rockchip_clear_system_status(sys_status);
 
+<<<<<<< HEAD
+=======
+	mutex_unlock(&vop->vop_lock);
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 out:
 	if (crtc->state->event && !crtc->state->active) {
 		spin_lock_irq(&crtc->dev->event_lock);
@@ -2094,6 +2119,7 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 	VOP_WIN_SET(vop, win, dsp_info, dsp_info);
 	VOP_WIN_SET(vop, win, dsp_st, dsp_st);
 
+<<<<<<< HEAD
 	rb_swap = has_rb_swapped(fb->format->format);
 	/*
 	 * VOP full need to do rb swap to show rgb888/bgr888 format color correctly
@@ -2101,6 +2127,9 @@ static void vop_plane_atomic_update(struct drm_plane *plane,
 	if ((fb->format->format == DRM_FORMAT_RGB888 || fb->format->format == DRM_FORMAT_BGR888) &&
 	    VOP_MAJOR(vop->version) == 3)
 		rb_swap = !rb_swap;
+=======
+	rb_swap = has_rb_swapped(vop->data->version, fb->format->format);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	VOP_WIN_SET(vop, win, rb_swap, rb_swap);
 
 	global_alpha_en = (vop_plane_state->global_alpha == 0xff) ? 0 : 1;
@@ -4132,8 +4161,13 @@ static struct drm_crtc_state *vop_crtc_duplicate_state(struct drm_crtc *crtc)
 	if (WARN_ON(!crtc->state))
 		return NULL;
 
+<<<<<<< HEAD
 	old_state = to_rockchip_crtc_state(crtc->state);
 	rockchip_state = kmemdup(old_state, sizeof(*old_state), GFP_KERNEL);
+=======
+	rockchip_state = kmemdup(to_rockchip_crtc_state(crtc->state),
+				 sizeof(*rockchip_state), GFP_KERNEL);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (!rockchip_state)
 		return NULL;
 
@@ -4150,6 +4184,23 @@ static void vop_crtc_destroy_state(struct drm_crtc *crtc,
 	kfree(s);
 }
 
+<<<<<<< HEAD
+=======
+static void vop_crtc_reset(struct drm_crtc *crtc)
+{
+	struct rockchip_crtc_state *crtc_state =
+		kzalloc(sizeof(*crtc_state), GFP_KERNEL);
+
+	if (crtc->state)
+		vop_crtc_destroy_state(crtc, crtc->state);
+
+	if (crtc_state)
+		__drm_atomic_helper_crtc_reset(crtc, &crtc_state->base);
+	else
+		__drm_atomic_helper_crtc_reset(crtc, NULL);
+}
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #ifdef CONFIG_DRM_ANALOGIX_DP
 static struct drm_connector *vop_get_edp_connector(struct vop *vop)
 {
@@ -5030,15 +5081,33 @@ static int vop_bind(struct device *dev, struct device *master, void *data)
 	if (ret)
 		return ret;
 
+<<<<<<< HEAD
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "regs");
 	if (!res) {
 		dev_warn(vop->dev, "failed to get vop register byname\n");
 		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	}
+=======
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	vop->regs = devm_ioremap_resource(dev, res);
 	if (IS_ERR(vop->regs))
 		return PTR_ERR(vop->regs);
 	vop->len = resource_size(res);
+<<<<<<< HEAD
+=======
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (res) {
+		if (!vop_data->lut_size) {
+			DRM_DEV_ERROR(dev, "no gamma LUT size defined\n");
+			return -EINVAL;
+		}
+		vop->lut_regs = devm_ioremap_resource(dev, res);
+		if (IS_ERR(vop->lut_regs))
+			return PTR_ERR(vop->lut_regs);
+	}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	vop->regsbak = devm_kzalloc(dev, vop->len, GFP_KERNEL);
 	if (!vop->regsbak)

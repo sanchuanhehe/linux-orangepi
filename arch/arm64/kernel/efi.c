@@ -144,7 +144,11 @@ asmlinkage efi_status_t efi_handle_corrupted_x18(efi_status_t s, const char *f)
 	return s;
 }
 
+<<<<<<< HEAD
 DEFINE_SPINLOCK(efi_rt_lock);
+=======
+DEFINE_RAW_SPINLOCK(efi_rt_lock);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 asmlinkage u64 *efi_rt_stack_top __ro_after_init;
 

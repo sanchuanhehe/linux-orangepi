@@ -133,9 +133,15 @@ static enum port intel_dsi_seq_port_to_port(struct intel_dsi *intel_dsi,
 		return ffs(intel_dsi->ports) - 1;
 
 	if (seq_port) {
+<<<<<<< HEAD
 		if (intel_dsi->ports & PORT_B)
 			return PORT_B;
 		else if (intel_dsi->ports & PORT_C)
+=======
+		if (intel_dsi->ports & BIT(PORT_B))
+			return PORT_B;
+		else if (intel_dsi->ports & BIT(PORT_C))
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			return PORT_C;
 	}
 

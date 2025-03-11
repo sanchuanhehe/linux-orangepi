@@ -228,8 +228,11 @@ SYM_FUNC_END_PI(__dma_flush_area)
  *	- dir	- DMA direction
  */
 SYM_FUNC_START_PI(__dma_map_area)
+<<<<<<< HEAD
 	cmp	w2, #DMA_FROM_DEVICE
 	b.eq	__dma_flush_area
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	b	__dma_clean_area
 SYM_FUNC_END_PI(__dma_map_area)
 

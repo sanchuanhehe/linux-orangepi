@@ -14,7 +14,7 @@
 #include <linux/errno.h>
 #include <linux/kmsg_dump.h>
 #include <linux/mutex.h>
-#include <linux/semaphore.h>
+#include <linux/spinlock.h>
 #include <linux/time.h>
 #include <linux/types.h>
 
@@ -41,6 +41,8 @@ enum pstore_type_id {
 #ifdef CONFIG_PSTORE_BOOT_LOG
 	PSTORE_TYPE_BOOT_LOG	= 9,
 #endif
+
+	PSTORE_TYPE_BLACKBOX    = 9,
 
 	/* End of the list */
 	PSTORE_TYPE_MAX
@@ -90,7 +92,7 @@ struct pstore_record {
  * @owner:	module which is responsible for this backend driver
  * @name:	name of the backend driver
  *
- * @buf_lock:	semaphore to serialize access to @buf
+ * @buf_lock:	spinlock to serialize access to @buf
  * @buf:	preallocated crash dump buffer
  * @bufsize:	size of @buf available for crash dump bytes (must match
  *		smallest number of bytes available for writing to a
@@ -181,7 +183,7 @@ struct pstore_info {
 	struct module	*owner;
 	const char	*name;
 
-	struct semaphore buf_lock;
+	spinlock_t	buf_lock;
 	char		*buf;
 	size_t		bufsize;
 
@@ -205,9 +207,13 @@ struct pstore_info {
 #define PSTORE_FLAGS_CONSOLE	BIT(1)
 #define PSTORE_FLAGS_FTRACE	BIT(2)
 #define PSTORE_FLAGS_PMSG	BIT(3)
+<<<<<<< HEAD
 #ifdef CONFIG_PSTORE_BOOT_LOG
 #define PSTORE_FLAGS_BOOT_LOG	BIT(4)
 #endif
+=======
+#define PSTORE_FLAGS_BLACKBOX	BIT(4)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 extern int pstore_register(struct pstore_info *);
 extern void pstore_unregister(struct pstore_info *);
@@ -286,6 +292,11 @@ pstore_ftrace_write_timestamp(struct pstore_ftrace_record *rec, u64 val)
 {
 	rec->ts = (rec->ts & TS_CPU_MASK) | (val << TS_CPU_SHIFT);
 }
+#endif
+
+#ifdef CONFIG_PSTORE_BLACKBOX
+extern void pstore_blackbox_dump(struct kmsg_dumper *dumper,
+						enum kmsg_dump_reason reason);
 #endif
 
 #endif /*_LINUX_PSTORE_H*/

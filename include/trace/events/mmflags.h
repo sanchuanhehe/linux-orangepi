@@ -57,6 +57,18 @@
 	__def_gfpflag_names						\
 	) : "none"
 
+#ifdef CONFIG_MEM_PURGEABLE
+#define IF_HAVE_PG_PURGEABLE(flag,string) ,{1UL << flag, string}
+#else
+#define IF_HAVE_PG_PURGEABLE(flag,string)
+#endif
+
+#ifdef CONFIG_SECURITY_XPM
+#define IF_HAVE_PG_XPM_INTEGRITY(flag,string) ,{1UL << flag, string}
+#else
+#define IF_HAVE_PG_XPM_INTEGRITY(flag,string)
+#endif
+
 #ifdef CONFIG_MMU
 #define IF_HAVE_PG_MLOCK(flag,string) ,{1UL << flag, string}
 #else
@@ -115,6 +127,9 @@
 	{1UL << PG_reclaim,		"reclaim"	},		\
 	{1UL << PG_swapbacked,		"swapbacked"	},		\
 	{1UL << PG_unevictable,		"unevictable"	}		\
+IF_HAVE_PG_PURGEABLE(PG_purgeable,	"purgeable"	)		\
+IF_HAVE_PG_XPM_INTEGRITY(PG_xpm_readonly,	"readonly")		\
+IF_HAVE_PG_XPM_INTEGRITY(PG_xpm_writetainted,	"writetained")		\
 IF_HAVE_PG_MLOCK(PG_mlocked,		"mlocked"	)		\
 IF_HAVE_PG_UNCACHED(PG_uncached,	"uncached"	)		\
 IF_HAVE_PG_HWPOISON(PG_hwpoison,	"hwpoison"	)		\

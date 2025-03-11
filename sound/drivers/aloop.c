@@ -628,7 +628,11 @@ static unsigned int loopback_jiffies_timer_pos_update
 	unsigned long delta_play = 0, delta_capt = 0, cur_jiffies;
 	unsigned int running, count1, count2;
 
+<<<<<<< HEAD
 	cur_jiffies = cycles_to_jiffies();
+=======
+	cur_jiffies = jiffies;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	running = cable->running ^ cable->pause;
 	if (running & (1 << SNDRV_PCM_STREAM_PLAYBACK)) {
 		delta_play = cur_jiffies - dpcm_play->last_jiffies;

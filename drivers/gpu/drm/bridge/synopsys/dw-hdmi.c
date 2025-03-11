@@ -4148,7 +4148,12 @@ EXPORT_SYMBOL_GPL(dw_hdmi_setup_rx_sense);
 static irqreturn_t dw_hdmi_irq(int irq, void *dev_id)
 {
 	struct dw_hdmi *hdmi = dev_id;
+<<<<<<< HEAD
 	u8 intr_stat, phy_int_pol, phy_pol_mask, phy_stat, hdcp_stat;
+=======
+	u8 intr_stat, phy_int_pol, phy_pol_mask, phy_stat;
+	enum drm_connector_status status = connector_status_unknown;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	intr_stat = hdmi_readb(hdmi, HDMI_IH_PHY_STAT0);
 	phy_int_pol = hdmi_readb(hdmi, HDMI_PHY_POL0);
@@ -4187,9 +4192,28 @@ static irqreturn_t dw_hdmi_irq(int irq, void *dev_id)
 			cec_notifier_phys_addr_invalidate(hdmi->cec_notifier);
 			mutex_unlock(&hdmi->cec_notifier_mutex);
 		}
+
+		if (phy_stat & HDMI_PHY_HPD)
+			status = connector_status_connected;
+
+		if (!(phy_stat & (HDMI_PHY_HPD | HDMI_PHY_RX_SENSE)))
+			status = connector_status_disconnected;
 	}
 
+<<<<<<< HEAD
 	check_hdmi_irq(hdmi, intr_stat, phy_int_pol);
+=======
+	if (status != connector_status_unknown) {
+		dev_dbg(hdmi->dev, "EVENT=%s\n",
+			status == connector_status_connected ?
+			"plugin" : "plugout");
+
+		if (hdmi->bridge.dev) {
+			drm_helper_hpd_irq_event(hdmi->bridge.dev);
+			drm_bridge_hpd_notify(&hdmi->bridge, status);
+		}
+	}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	hdmi_writeb(hdmi, intr_stat, HDMI_IH_PHY_STAT0);
 	if (!hdmi->next_bridge)

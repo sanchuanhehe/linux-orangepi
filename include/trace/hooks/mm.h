@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
+<<<<<<< HEAD
 #ifdef PROTECT_TRACE_INCLUDE_PATH
 #undef PROTECT_TRACE_INCLUDE_PATH
 
@@ -8,10 +9,13 @@
 
 #else /* PROTECT_TRACE_INCLUDE_PATH */
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM mm
 
 #define TRACE_INCLUDE_PATH trace/hooks
+<<<<<<< HEAD
 
 #if !defined(_TRACE_HOOK_MM_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_HOOK_MM_H
@@ -313,3 +317,25 @@ DECLARE_HOOK(android_vh_look_around,
 #include <trace/define_trace.h>
 
 #endif /* PROTECT_TRACE_INCLUDE_PATH */
+=======
+#if !defined(_TRACE_HOOKS_MM_H) || defined(TRACE_HEADER_MULTI_READ)
+#define _TRACE_HOOKS_MM_H
+
+#include <linux/tracepoint.h>
+#include <trace/hooks/vendor_hooks.h>
+
+DECLARE_HOOK(vendor_do_mmap,
+	TP_PROTO(vm_flags_t *vm_flags, int *err),
+	TP_ARGS(vm_flags, err)
+);
+
+DECLARE_HOOK(vendor_do_mprotect_pkey,
+	TP_PROTO(unsigned long prot, int *err),
+	TP_ARGS(prot, err)
+);
+
+#endif
+
+/* This part must be outside protection */
+#include <trace/define_trace.h>
+>>>>>>> ohos/OpenHarmony-5.0.2-Release

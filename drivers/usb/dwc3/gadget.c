@@ -180,6 +180,7 @@ static void dwc3_gadget_del_and_unmap_request(struct dwc3_ep *dep,
 	list_del(&req->list);
 	req->remaining = 0;
 	req->needs_extra_trb = false;
+	req->num_trbs = 0;
 
 	if (req->request.status == -EINPROGRESS)
 		req->request.status = status;
@@ -1110,7 +1111,11 @@ out:
 	return 0;
 }
 
+<<<<<<< HEAD
 void dwc3_remove_requests(struct dwc3 *dwc, struct dwc3_ep *dep, int status)
+=======
+static void dwc3_remove_requests(struct dwc3 *dwc, struct dwc3_ep *dep, int status)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	struct dwc3_request		*req;
 
@@ -1170,6 +1175,7 @@ static int __dwc3_gadget_ep_disable(struct dwc3_ep *dep)
 
 	dep->stream_capable = false;
 	dep->type = 0;
+<<<<<<< HEAD
 	mask = DWC3_EP_TXFIFO_RESIZED;
 	/*
 	 * dwc3_remove_requests() can exit early if DWC3 EP delayed stop is
@@ -1179,6 +1185,9 @@ static int __dwc3_gadget_ep_disable(struct dwc3_ep *dep)
 	if (dep->flags & DWC3_EP_DELAY_STOP)
 		mask |= (DWC3_EP_DELAY_STOP | DWC3_EP_TRANSFER_STARTED);
 	dep->flags &= mask;
+=======
+	dep->flags = 0;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	/* Clear out the ep descriptors for non-ep0 */
 	if (dep->number > 1) {
@@ -1186,6 +1195,7 @@ static int __dwc3_gadget_ep_disable(struct dwc3_ep *dep)
 		dep->endpoint.desc = NULL;
 	}
 
+<<<<<<< HEAD
 	dwc3_remove_requests(dwc, dep, -ECONNRESET);
 
 	dep->stream_capable = false;
@@ -1200,6 +1210,8 @@ static int __dwc3_gadget_ep_disable(struct dwc3_ep *dep)
 		mask |= (DWC3_EP_DELAY_STOP | DWC3_EP_TRANSFER_STARTED);
 	dep->flags &= mask;
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	return 0;
 }
 
@@ -1568,8 +1580,8 @@ static int dwc3_prepare_trbs_sg(struct dwc3_ep *dep,
 	struct scatterlist *s;
 	int		i;
 	unsigned int length = req->request.length;
-	unsigned int remaining = req->request.num_mapped_sgs
-		- req->num_queued_sgs;
+	unsigned int remaining = req->num_pending_sgs;
+	unsigned int num_queued_sgs = req->request.num_mapped_sgs - remaining;
 	unsigned int num_trbs = req->num_trbs;
 	bool needs_extra_trb = dwc3_needs_extra_trb(dep, req);
 
@@ -1577,7 +1589,7 @@ static int dwc3_prepare_trbs_sg(struct dwc3_ep *dep,
 	 * If we resume preparing the request, then get the remaining length of
 	 * the request and resume where we left off.
 	 */
-	for_each_sg(req->request.sg, s, req->num_queued_sgs, i)
+	for_each_sg(req->request.sg, s, num_queued_sgs, i)
 		length -= sg_dma_len(s);
 
 	for_each_sg(sg, s, remaining, i) {
@@ -1837,6 +1849,10 @@ static int __dwc3_gadget_get_frame(struct dwc3 *dwc)
  */
 static int __dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force, bool interrupt)
 {
+<<<<<<< HEAD
+=======
+	struct dwc3 *dwc = dep->dwc;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	struct dwc3_gadget_ep_cmd_params params;
 	u32 cmd;
 	int ret;
@@ -1847,6 +1863,7 @@ static int __dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force, bool int
 	cmd |= DWC3_DEPCMD_PARAM(dep->resource_index);
 	memset(&params, 0, sizeof(params));
 	ret = dwc3_send_gadget_ep_cmd(dep, cmd, &params);
+<<<<<<< HEAD
 	/*
 	 * If the End Transfer command was timed out while the device is
 	 * not in SETUP phase, it's possible that an incoming Setup packet
@@ -1864,6 +1881,18 @@ static int __dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force, bool int
 		dep->flags &= ~DWC3_EP_TRANSFER_STARTED;
 	else
 		dep->flags |= DWC3_EP_END_TRANSFER_PENDING;
+=======
+	WARN_ON_ONCE(ret);
+	dep->resource_index = 0;
+
+	if (!interrupt) {
+		if (!DWC3_IP_IS(DWC3) || DWC3_VER_IS_PRIOR(DWC3, 310A))
+			mdelay(1);
+		dep->flags &= ~DWC3_EP_TRANSFER_STARTED;
+	} else if (!ret) {
+		dep->flags |= DWC3_EP_END_TRANSFER_PENDING;
+	}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	return ret;
 }
@@ -2043,11 +2072,16 @@ static int __dwc3_gadget_start_isoc(struct dwc3_ep *dep)
 	 * status, issue END_TRANSFER command and retry on the next XferNotReady
 	 * event.
 	 */
+<<<<<<< HEAD
 	if (ret == -EAGAIN) {
 		ret = __dwc3_stop_active_transfer(dep, false, true);
 		if (ret)
 			dep->flags &= ~DWC3_EP_END_TRANSFER_PENDING;
 	}
+=======
+	if (ret == -EAGAIN)
+		ret = __dwc3_stop_active_transfer(dep, false, true);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	return ret;
 }
@@ -2668,12 +2702,47 @@ static void __dwc3_gadget_stop(struct dwc3 *dwc);
 static int __dwc3_gadget_start(struct dwc3 *dwc);
 
 static int dwc3_gadget_soft_disconnect(struct dwc3 *dwc)
+<<<<<<< HEAD
+{
+	unsigned long flags;
+=======
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&dwc->lock, flags);
 	dwc->connected = false;
 
+	/*
+	 * In the Synopsys DesignWare Cores USB3 Databook Rev. 3.30a
+	 * Section 4.1.8 Table 4-7, it states that for a device-initiated
+	 * disconnect, the SW needs to ensure that it sends "a DEPENDXFER
+	 * command for any active transfers" before clearing the RunStop
+	 * bit.
+	 */
+	dwc3_stop_active_transfers(dwc);
+	__dwc3_gadget_stop(dwc);
+	spin_unlock_irqrestore(&dwc->lock, flags);
+
+	/*
+	 * Note: if the GEVNTCOUNT indicates events in the event buffer, the
+	 * driver needs to acknowledge them before the controller can halt.
+	 * Simply let the interrupt handler acknowledges and handle the
+	 * remaining event generated by the controller while polling for
+	 * DSTS.DEVCTLHLT.
+	 */
+	return dwc3_gadget_run_stop(dwc, false, false);
+}
+
+static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
+{
+	struct dwc3		*dwc = gadget_to_dwc(g);
+	int			ret;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
+
+	spin_lock_irqsave(&dwc->lock, flags);
+	dwc->connected = false;
+
+	dwc->softconnect = is_on;
 	/*
 	 * Per databook, when we want to stop the gadget, if a control transfer
 	 * is still in process, complete it and get the core into setup phase.
@@ -2745,9 +2814,17 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 	ret = pm_runtime_get_sync(dwc->dev);
 	if (!ret || ret < 0) {
 		pm_runtime_put(dwc->dev);
+		if (ret < 0)
+			pm_runtime_set_suspended(dwc->dev);
+		return ret;
+	}
+
+	if (dwc->pullups_connected == is_on) {
+		pm_runtime_put(dwc->dev);
 		return 0;
 	}
 
+<<<<<<< HEAD
 	if (dwc->pullups_connected == is_on) {
 		pm_runtime_put(dwc->dev);
 		return 0;
@@ -2766,6 +2843,19 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 		 */
 		dwc3_core_soft_reset(dwc);
 
+=======
+	if (!is_on) {
+		ret = dwc3_gadget_soft_disconnect(dwc);
+	} else {
+		/*
+		 * In the Synopsys DWC_usb31 1.90a programming guide section
+		 * 4.1.9, it specifies that for a reconnect after a
+		 * device-initiated disconnect requires a core soft reset
+		 * (DCTL.CSftRst) before enabling the run/stop bit.
+		 */
+		dwc3_core_soft_reset(dwc);
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		dwc3_event_buffers_setup(dwc);
 		__dwc3_gadget_start(dwc);
 		ret = dwc3_gadget_run_stop(dwc, true, false);
@@ -3510,7 +3600,10 @@ static int dwc3_gadget_ep_cleanup_completed_request(struct dwc3_ep *dep,
 		const struct dwc3_event_depevt *event,
 		struct dwc3_request *req, int status)
 {
+<<<<<<< HEAD
 	struct dwc3 *dwc = dep->dwc;
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	int request_status;
 	int ret;
 
@@ -3533,6 +3626,7 @@ static int dwc3_gadget_ep_cleanup_completed_request(struct dwc3_ep *dep,
 	}
 
 	/*
+<<<<<<< HEAD
 	 * If MISS ISOC happens, we need to move the req from started_list
 	 * to cancelled_list, then unmap the req and clear the HWO of trb.
 	 * Later in the dwc3_gadget_endpoint_trbs_complete(), it will move
@@ -3555,6 +3649,8 @@ static int dwc3_gadget_ep_cleanup_completed_request(struct dwc3_ep *dep,
 	}
 
 	/*
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	 * The event status only reflects the status of the TRB with IOC set.
 	 * For the requests that don't set interrupt on completion, the driver
 	 * needs to check and return the status of the completed TRBs associated
@@ -3654,6 +3750,7 @@ static bool dwc3_gadget_endpoint_trbs_complete(struct dwc3_ep *dep,
 	if (!dep->endpoint.desc)
 		return no_started_trb;
 
+<<<<<<< HEAD
 	/*
 	 * If MISS ISOC happens, we need to do the following three steps
 	 * to restart the reqs in the cancelled_list and pending_list
@@ -3677,6 +3774,8 @@ static bool dwc3_gadget_endpoint_trbs_complete(struct dwc3_ep *dep,
 			dwc3_gadget_move_queued_request(req);
 	}
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (usb_endpoint_xfer_isoc(dep->endpoint.desc) &&
 		list_empty(&dep->started_list) &&
 		(list_empty(&dep->pending_list) || status == -EXDEV))
@@ -3963,6 +4062,7 @@ static void dwc3_reset_gadget(struct dwc3 *dwc)
 void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force,
 	bool interrupt)
 {
+<<<<<<< HEAD
 	struct dwc3 *dwc = dep->dwc;
 
 	/*
@@ -3974,6 +4074,8 @@ void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force,
 	if (dep->number <= 1 && dwc->ep0state != EP0_DATA_PHASE)
 		return;
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (!(dep->flags & DWC3_EP_TRANSFER_STARTED) ||
 	    (dep->flags & DWC3_EP_DELAY_STOP) ||
 	    (dep->flags & DWC3_EP_END_TRANSFER_PENDING))
@@ -4015,7 +4117,11 @@ void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force,
 	 * enabled, the EndTransfer command will have completed upon
 	 * returning from this function.
 	 *
-	 * This mode is NOT available on the DWC_usb31 IP.
+	 * This mode is NOT available on the DWC_usb31 IP.  In this
+	 * case, if the IOC bit is not set, then delay by 1ms
+	 * after issuing the EndTransfer command.  This allows for the
+	 * controller to handle the command completely before DWC3
+	 * remove requests attempts to unmap USB request buffers.
 	 */
 
 	__dwc3_stop_active_transfer(dep, force, interrupt);
@@ -4594,9 +4700,14 @@ static irqreturn_t dwc3_check_event_buf(struct dwc3_event_buffer *evt)
 	u32 count;
 
 	if (pm_runtime_suspended(dwc->dev)) {
+		dwc->pending_events = true;
+		/*
+		 * Trigger runtime resume. The get() function will be balanced
+		 * after processing the pending events in dwc3_process_pending
+		 * events().
+		 */
 		pm_runtime_get(dwc->dev);
 		disable_irq_nosync(dwc->irq_gadget);
-		dwc->pending_events = true;
 		return IRQ_HANDLED;
 	}
 
@@ -4841,7 +4952,11 @@ int dwc3_gadget_resume(struct dwc3 *dwc)
 	struct dwc3_vendor	*vdwc = container_of(dwc, struct dwc3_vendor, dwc);
 	int			ret;
 
+<<<<<<< HEAD
 	if (!dwc->gadget_driver || !vdwc->softconnect)
+=======
+	if (!dwc->gadget_driver || !dwc->softconnect)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		return 0;
 
 	ret = __dwc3_gadget_start(dwc);
@@ -4865,6 +4980,8 @@ void dwc3_gadget_process_pending_events(struct dwc3 *dwc)
 {
 	if (dwc->pending_events) {
 		dwc3_interrupt(dwc->irq_gadget, dwc->ev_buf);
+		dwc3_thread_interrupt(dwc->irq_gadget, dwc->ev_buf);
+		pm_runtime_put(dwc->dev);
 		dwc->pending_events = false;
 		enable_irq(dwc->irq_gadget);
 	}

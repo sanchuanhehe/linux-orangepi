@@ -21,6 +21,9 @@
 
 #include <net/inet_sock.h>
 #include <net/request_sock.h>
+#if defined(CONFIG_TCP_NATA_URC) || defined(CONFIG_TCP_NATA_STL)
+#include <net/nata.h>
+#endif
 
 /* Cancel timers, when they are not required. */
 #undef INET_CSK_CLEAR_TIMERS
@@ -111,6 +114,14 @@ struct inet_connection_sock {
 	__u8			  icsk_syn_retries;
 	__u8			  icsk_probes_out;
 	__u16			  icsk_ext_hdr_len;
+#if defined(CONFIG_TCP_NATA_URC) || defined(CONFIG_TCP_NATA_STL)
+	__u8			  nata_retries_enabled:1,
+				  nata_reserved:7;
+	__u8			  nata_data_retries;
+	__u8			  nata_retries_type;
+	__u32			  nata_syn_rto;
+	__u32			  nata_data_rto;
+#endif
 	struct {
 		__u8		  pending;	 /* ACK is pending			   */
 		__u8		  quick;	 /* Scheduled number of quick acks	   */
@@ -177,6 +188,7 @@ void inet_csk_init_xmit_timers(struct sock *sk,
 			       void (*delack_handler)(struct timer_list *),
 			       void (*keepalive_handler)(struct timer_list *));
 void inet_csk_clear_xmit_timers(struct sock *sk);
+void inet_csk_clear_xmit_timers_sync(struct sock *sk);
 
 static inline void inet_csk_schedule_ack(struct sock *sk)
 {
@@ -216,6 +228,44 @@ static inline void inet_csk_clear_xmit_timer(struct sock *sk, const int what)
 	}
 }
 
+#if defined(CONFIG_TCP_NATA_URC) || defined(CONFIG_TCP_NATA_STL)
+static inline unsigned long get_nata_rto(struct sock *sk,
+					 struct inet_connection_sock *icsk,
+					 unsigned long when, const int what)
+{
+	unsigned long when_nata;
+	unsigned long shift;
+
+	if (!icsk->nata_retries_enabled)
+		return when;
+
+	switch (what) {
+	case ICSK_TIME_RETRANS:
+	case ICSK_TIME_EARLY_RETRANS:
+	case ICSK_TIME_LOSS_PROBE:
+	case ICSK_TIME_REO_TIMEOUT:
+		break;
+	default:
+		return when;
+	}
+
+	if (icsk->nata_retries_type == NATA_STL)
+		return sk->sk_state == TCP_SYN_SENT ?
+			icsk->nata_syn_rto : icsk->nata_data_rto;
+
+	when_nata = icsk->nata_data_rto;
+	if (icsk->icsk_retransmits > icsk->nata_data_retries) {
+		shift = icsk->icsk_retransmits - icsk->nata_data_retries;
+		if (shift > MAX_SHIFT) {
+			when_nata = NATA_RTO_MAX;
+		} else {
+			when_nata <<= shift;
+		}
+	}
+	return min(when, when_nata);
+}
+#endif
+
 /*
  *	Reset the retransmission timer
  */
@@ -224,6 +274,10 @@ static inline void inet_csk_reset_xmit_timer(struct sock *sk, const int what,
 					     const unsigned long max_when)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
+
+#if defined(CONFIG_TCP_NATA_URC) || defined(CONFIG_TCP_NATA_STL)
+	when = get_nata_rto(sk, icsk, when, what);
+#endif
 
 	if (when > max_when) {
 		pr_debug("reset_xmit_timer: sk=%p %d when=0x%lx, caller=%p\n",
@@ -296,7 +350,7 @@ static inline void inet_csk_prepare_for_destroy_sock(struct sock *sk)
 {
 	/* The below has to be done to allow calling inet_csk_destroy_sock */
 	sock_set_flag(sk, SOCK_DEAD);
-	percpu_counter_inc(sk->sk_prot->orphan_count);
+	this_cpu_inc(*sk->sk_prot->orphan_count);
 }
 
 void inet_csk_destroy_sock(struct sock *sk);
@@ -342,6 +396,14 @@ static inline bool inet_csk_in_pingpong_mode(struct sock *sk)
 static inline bool inet_csk_has_ulp(struct sock *sk)
 {
 	return inet_sk(sk)->is_icsk && !!inet_csk(sk)->icsk_ulp_ops;
+}
+
+static inline void inet_init_csk_locks(struct sock *sk)
+{
+	struct inet_connection_sock *icsk = inet_csk(sk);
+
+	spin_lock_init(&icsk->icsk_accept_queue.rskq_lock);
+	spin_lock_init(&icsk->icsk_accept_queue.fastopenq.lock);
 }
 
 #endif /* _INET_CONNECTION_SOCK_H */

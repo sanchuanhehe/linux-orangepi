@@ -337,8 +337,13 @@ void kasan_record_aux_stack(void *addr)
 
 	cache = page->slab_cache;
 	object = nearest_obj(cache, page, addr);
+<<<<<<< HEAD
 	alloc_meta = kasan_get_alloc_meta(cache, object);
 	if (!alloc_meta)
+=======
+	alloc_info = get_alloc_info(cache, object);
+	if (!alloc_info)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		return;
 
 	alloc_meta->aux_stack[1] = alloc_meta->aux_stack[0];

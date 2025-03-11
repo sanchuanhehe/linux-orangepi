@@ -88,12 +88,15 @@ phys_addr_t __ro_after_init arm64_dma_phys_limit;
 #else
 phys_addr_t __ro_after_init arm64_dma_phys_limit = PHYS_MASK + 1;
 #endif
+<<<<<<< HEAD
 
 /*
  * Provide a run-time mean of disabling ZONE_DMA32 if it is enabled via
  * CONFIG_ZONE_DMA32.
  */
 static bool disable_dma32 __ro_after_init;
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 #ifdef CONFIG_KEXEC_CORE
 /*

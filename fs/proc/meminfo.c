@@ -16,6 +16,9 @@
 #ifdef CONFIG_CMA
 #include <linux/cma.h>
 #endif
+#ifdef CONFIG_MEM_PURGEABLE
+#include <linux/mm_purgeable.h>
+#endif
 #include <asm/page.h>
 #include "internal.h"
 #include <trace/hooks/mm.h>
@@ -38,6 +41,11 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	unsigned long pages[NR_LRU_LISTS];
 	unsigned long sreclaimable, sunreclaim;
 	int lru;
+	unsigned long nr_purg_active = 0;
+	unsigned long nr_purg_inactive = 0;
+#ifdef CONFIG_MEM_PURGEABLE
+	unsigned long nr_purg_pined = 0;
+#endif
 
 	si_meminfo(&i);
 	si_swapinfo(&i);
@@ -51,6 +59,13 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	for (lru = LRU_BASE; lru < NR_LRU_LISTS; lru++)
 		pages[lru] = global_node_page_state(NR_LRU_BASE + lru);
 
+#ifdef CONFIG_MEM_PURGEABLE
+	nr_purg_active = pages[LRU_ACTIVE_PURGEABLE];
+	nr_purg_inactive = pages[LRU_INACTIVE_PURGEABLE];
+	purg_pages_info(NULL, &nr_purg_pined);
+	nr_purg_pined = min(nr_purg_pined, nr_purg_active + nr_purg_inactive);
+#endif
+
 	available = si_mem_available();
 	sreclaimable = global_node_page_state_pages(NR_SLAB_RECLAIMABLE_B);
 	sunreclaim = global_node_page_state_pages(NR_SLAB_UNRECLAIMABLE_B);
@@ -62,13 +77,20 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	show_val_kb(m, "Cached:         ", cached);
 	show_val_kb(m, "SwapCached:     ", total_swapcache_pages());
 	show_val_kb(m, "Active:         ", pages[LRU_ACTIVE_ANON] +
-					   pages[LRU_ACTIVE_FILE]);
+					   pages[LRU_ACTIVE_FILE] +
+					   nr_purg_active);
 	show_val_kb(m, "Inactive:       ", pages[LRU_INACTIVE_ANON] +
-					   pages[LRU_INACTIVE_FILE]);
+					   pages[LRU_INACTIVE_FILE] +
+					   nr_purg_inactive);
 	show_val_kb(m, "Active(anon):   ", pages[LRU_ACTIVE_ANON]);
 	show_val_kb(m, "Inactive(anon): ", pages[LRU_INACTIVE_ANON]);
 	show_val_kb(m, "Active(file):   ", pages[LRU_ACTIVE_FILE]);
 	show_val_kb(m, "Inactive(file): ", pages[LRU_INACTIVE_FILE]);
+#ifdef CONFIG_MEM_PURGEABLE
+	show_val_kb(m, "Active(purg):   ", nr_purg_active);
+	show_val_kb(m, "Inactive(purg): ", nr_purg_inactive);
+	show_val_kb(m, "Pined(purg):    ", nr_purg_pined);
+#endif
 	show_val_kb(m, "Unevictable:    ", pages[LRU_UNEVICTABLE]);
 	show_val_kb(m, "Mlocked:        ", global_zone_page_state(NR_MLOCK));
 
@@ -122,6 +144,10 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	show_val_kb(m, "VmallocChunk:   ", 0ul);
 	show_val_kb(m, "Percpu:         ", pcpu_nr_pages());
 
+#ifdef CONFIG_PAGE_TRACING
+	show_val_kb(m, "Skb:            ", global_zone_page_state(NR_SKB_PAGES));
+#endif
+
 #ifdef CONFIG_MEMORY_FAILURE
 	seq_printf(m, "HardwareCorrupted: %5lu kB\n",
 		   atomic_long_read(&num_poisoned_pages) << (PAGE_SHIFT - 10));
@@ -150,6 +176,11 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 		    global_zone_page_state(NR_FREE_CMA_PAGES));
 #endif
 	trace_android_vh_meminfo_proc_show(m);
+
+#ifdef CONFIG_PAGE_TRACING
+	seq_puts(m, "GLTrack:               - kB\n");
+	show_val_kb(m, "ZspageUsed:	", global_zone_page_state(NR_ZSPAGES));
+#endif
 
 	hugetlb_report_meminfo(m);
 

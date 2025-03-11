@@ -56,6 +56,7 @@
 #include <linux/file.h>
 #include <linux/fs_parser.h>
 #include <linux/sched/cputime.h>
+#include <linux/sched/deadline.h>
 #include <linux/psi.h>
 #include <net/sock.h>
 
@@ -746,6 +747,7 @@ EXPORT_SYMBOL_GPL(of_css);
  * reference-counted, to improve performance when child cgroups
  * haven't been created.
  */
+<<<<<<< HEAD
 struct ext_css_set init_ext_css_set = {
 	.cset = {
 		.refcount               = REFCOUNT_INIT(1),
@@ -768,6 +770,28 @@ struct ext_css_set init_ext_css_set = {
 	},
 	.mg_src_preload_node	= LIST_HEAD_INIT(init_ext_css_set.mg_src_preload_node),
 	.mg_dst_preload_node	= LIST_HEAD_INIT(init_ext_css_set.mg_dst_preload_node),
+=======
+struct css_set init_css_set = {
+	.refcount		= REFCOUNT_INIT(1),
+	.dom_cset		= &init_css_set,
+	.tasks			= LIST_HEAD_INIT(init_css_set.tasks),
+	.mg_tasks		= LIST_HEAD_INIT(init_css_set.mg_tasks),
+	.dying_tasks		= LIST_HEAD_INIT(init_css_set.dying_tasks),
+	.task_iters		= LIST_HEAD_INIT(init_css_set.task_iters),
+	.threaded_csets		= LIST_HEAD_INIT(init_css_set.threaded_csets),
+	.cgrp_links		= LIST_HEAD_INIT(init_css_set.cgrp_links),
+	.mg_src_preload_node	= LIST_HEAD_INIT(init_css_set.mg_src_preload_node),
+	.mg_dst_preload_node	= LIST_HEAD_INIT(init_css_set.mg_dst_preload_node),
+	.mg_node		= LIST_HEAD_INIT(init_css_set.mg_node),
+
+	/*
+	 * The following field is re-initialized when this cset gets linked
+	 * in cgroup_init().  However, let's initialize the field
+	 * statically too so that the default cgroup can be accessed safely
+	 * early during boot.
+	 */
+	.dfl_cgrp		= &cgrp_dfl_root.cgrp,
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 };
 
 static int css_set_count	= 1;	/* 1 for init_css_set */
@@ -1235,9 +1259,14 @@ static struct css_set *find_css_set(struct css_set *old_cset,
 	INIT_LIST_HEAD(&cset->threaded_csets);
 	INIT_HLIST_NODE(&cset->hlist);
 	INIT_LIST_HEAD(&cset->cgrp_links);
+<<<<<<< HEAD
 	INIT_LIST_HEAD(&cset->mg_preload_node);
 	INIT_LIST_HEAD(&ext_cset->mg_src_preload_node);
 	INIT_LIST_HEAD(&ext_cset->mg_dst_preload_node);
+=======
+	INIT_LIST_HEAD(&cset->mg_src_preload_node);
+	INIT_LIST_HEAD(&cset->mg_dst_preload_node);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	INIT_LIST_HEAD(&cset->mg_node);
 
 	/* Copy the set of subsystem state objects generated in
@@ -1736,7 +1765,11 @@ int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 {
 	struct cgroup *dcgrp = &dst_root->cgrp;
 	struct cgroup_subsys *ss;
+<<<<<<< HEAD
 	int ssid, i, ret;
+=======
+	int ssid, ret;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	u16 dfl_disable_ss_mask = 0;
 
 	lockdep_assert_held(&cgroup_mutex);
@@ -1780,7 +1813,8 @@ int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 		struct cgroup_root *src_root = ss->root;
 		struct cgroup *scgrp = &src_root->cgrp;
 		struct cgroup_subsys_state *css = cgroup_css(scgrp, ss);
-		struct css_set *cset;
+		struct css_set *cset, *cset_pos;
+		struct css_task_iter *it;
 
 		WARN_ON(!css || cgroup_css(dcgrp, ss));
 
@@ -1798,9 +1832,22 @@ int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 		css->cgroup = dcgrp;
 
 		spin_lock_irq(&css_set_lock);
-		hash_for_each(css_set_table, i, cset, hlist)
+		WARN_ON(!list_empty(&dcgrp->e_csets[ss->id]));
+		list_for_each_entry_safe(cset, cset_pos, &scgrp->e_csets[ss->id],
+					 e_cset_node[ss->id]) {
 			list_move_tail(&cset->e_cset_node[ss->id],
 				       &dcgrp->e_csets[ss->id]);
+			/*
+			 * all css_sets of scgrp together in same order to dcgrp,
+			 * patch in-flight iterators to preserve correct iteration.
+			 * since the iterator is always advanced right away and
+			 * finished when it->cset_pos meets it->cset_head, so only
+			 * update it->cset_head is enough here.
+			 */
+			list_for_each_entry(it, &cset->task_iters, iters_node)
+				if (it->cset_head == &scgrp->e_csets[ss->id])
+					it->cset_head = &dcgrp->e_csets[ss->id];
+		}
 		spin_unlock_irq(&css_set_lock);
 
 		/* default hierarchy doesn't enable controllers by default */
@@ -1963,6 +2010,7 @@ void init_cgroup_root(struct cgroup_fs_context *ctx)
 	atomic_set(&root->nr_cgrps, 1);
 	cgrp->root = root;
 	init_cgroup_housekeeping(cgrp);
+	init_waitqueue_head(&root->wait);
 
 	root->flags = ctx->flags;
 	if (ctx->release_agent)
@@ -2187,6 +2235,17 @@ static void cgroup_kill_sb(struct super_block *sb)
 {
 	struct kernfs_root *kf_root = kernfs_root_from_sb(sb);
 	struct cgroup_root *root = cgroup_root_from_kf(kf_root);
+
+	/*
+	 * Wait if there are cgroups being destroyed, because the destruction
+	 * is asynchronous. On the other hand some controllers like memcg
+	 * may pin cgroups for a very long time, so don't wait forever.
+	 */
+	if (root != &cgrp_dfl_root) {
+		wait_event_timeout(root->wait,
+				   list_empty(&root->cgrp.self.children),
+				   msecs_to_jiffies(500));
+	}
 
 	/*
 	 * If @root doesn't have any children, start killing it.
@@ -2626,7 +2685,11 @@ int cgroup_migrate_vet_dst(struct cgroup *dst_cgrp)
  */
 void cgroup_migrate_finish(struct cgroup_mgctx *mgctx)
 {
+<<<<<<< HEAD
 	struct ext_css_set *cset, *tmp_cset;
+=======
+	struct css_set *cset, *tmp_cset;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	lockdep_assert_held(&cgroup_mutex);
 
@@ -2634,20 +2697,36 @@ void cgroup_migrate_finish(struct cgroup_mgctx *mgctx)
 
 	list_for_each_entry_safe(cset, tmp_cset, &mgctx->preloaded_src_csets,
 				 mg_src_preload_node) {
+<<<<<<< HEAD
 		cset->cset.mg_src_cgrp = NULL;
 		cset->cset.mg_dst_cgrp = NULL;
 		cset->cset.mg_dst_cset = NULL;
 		list_del_init(&cset->mg_src_preload_node);
 		put_css_set_locked(&cset->cset);
+=======
+		cset->mg_src_cgrp = NULL;
+		cset->mg_dst_cgrp = NULL;
+		cset->mg_dst_cset = NULL;
+		list_del_init(&cset->mg_src_preload_node);
+		put_css_set_locked(cset);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	}
 
 	list_for_each_entry_safe(cset, tmp_cset, &mgctx->preloaded_dst_csets,
 				 mg_dst_preload_node) {
+<<<<<<< HEAD
 		cset->cset.mg_src_cgrp = NULL;
 		cset->cset.mg_dst_cgrp = NULL;
 		cset->cset.mg_dst_cset = NULL;
 		list_del_init(&cset->mg_dst_preload_node);
 		put_css_set_locked(&cset->cset);
+=======
+		cset->mg_src_cgrp = NULL;
+		cset->mg_dst_cgrp = NULL;
+		cset->mg_dst_cset = NULL;
+		list_del_init(&cset->mg_dst_preload_node);
+		put_css_set_locked(cset);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	}
 
 	spin_unlock_irq(&css_set_lock);
@@ -2690,7 +2769,11 @@ void cgroup_migrate_add_src(struct css_set *src_cset,
 	src_cgrp = cset_cgroup_from_root(src_cset, dst_cgrp->root);
 	ext_src_cset = container_of(src_cset, struct ext_css_set, cset);
 
+<<<<<<< HEAD
 	if (!list_empty(&ext_src_cset->mg_src_preload_node))
+=======
+	if (!list_empty(&src_cset->mg_src_preload_node))
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		return;
 
 	WARN_ON(src_cset->mg_src_cgrp);
@@ -2701,7 +2784,11 @@ void cgroup_migrate_add_src(struct css_set *src_cset,
 	src_cset->mg_src_cgrp = src_cgrp;
 	src_cset->mg_dst_cgrp = dst_cgrp;
 	get_css_set(src_cset);
+<<<<<<< HEAD
 	list_add_tail(&ext_src_cset->mg_src_preload_node, &mgctx->preloaded_src_csets);
+=======
+	list_add_tail(&src_cset->mg_src_preload_node, &mgctx->preloaded_src_csets);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 /**
@@ -2725,9 +2812,14 @@ int cgroup_migrate_prepare_dst(struct cgroup_mgctx *mgctx)
 	lockdep_assert_held(&cgroup_mutex);
 
 	/* look up the dst cset for each src cset and link it to src */
+<<<<<<< HEAD
 	list_for_each_entry_safe(ext_src_set, tmp_cset, &mgctx->preloaded_src_csets,
 				 mg_src_preload_node) {
 		struct css_set *src_cset = &ext_src_set->cset;
+=======
+	list_for_each_entry_safe(src_cset, tmp_cset, &mgctx->preloaded_src_csets,
+				 mg_src_preload_node) {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		struct css_set *dst_cset;
 		struct ext_css_set *ext_dst_cset;
 		struct cgroup_subsys *ss;
@@ -2748,7 +2840,11 @@ int cgroup_migrate_prepare_dst(struct cgroup_mgctx *mgctx)
 		if (src_cset == dst_cset) {
 			src_cset->mg_src_cgrp = NULL;
 			src_cset->mg_dst_cgrp = NULL;
+<<<<<<< HEAD
 			list_del_init(&ext_src_set->mg_src_preload_node);
+=======
+			list_del_init(&src_cset->mg_src_preload_node);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			put_css_set(src_cset);
 			put_css_set(dst_cset);
 			continue;
@@ -2756,8 +2852,13 @@ int cgroup_migrate_prepare_dst(struct cgroup_mgctx *mgctx)
 
 		src_cset->mg_dst_cset = dst_cset;
 
+<<<<<<< HEAD
 		if (list_empty(&ext_dst_cset->mg_dst_preload_node))
 			list_add_tail(&ext_dst_cset->mg_dst_preload_node,
+=======
+		if (list_empty(&dst_cset->mg_dst_preload_node))
+			list_add_tail(&dst_cset->mg_dst_preload_node,
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 				      &mgctx->preloaded_dst_csets);
 		else
 			put_css_set(dst_cset);
@@ -2791,6 +2892,7 @@ int cgroup_migrate_prepare_dst(struct cgroup_mgctx *mgctx)
 int cgroup_migrate(struct task_struct *leader, bool threadgroup,
 		   struct cgroup_mgctx *mgctx)
 {
+	int err = 0;
 	struct task_struct *task;
 
 	/*
@@ -2803,13 +2905,16 @@ int cgroup_migrate(struct task_struct *leader, bool threadgroup,
 	task = leader;
 	do {
 		cgroup_migrate_add_task(task, mgctx);
-		if (!threadgroup)
+		if (!threadgroup) {
+			if (task->flags & PF_EXITING)
+				err = -ESRCH;
 			break;
+		}
 	} while_each_thread(leader, task);
 	rcu_read_unlock();
 	spin_unlock_irq(&css_set_lock);
 
-	return cgroup_migrate_execute(mgctx);
+	return err ? err : cgroup_migrate_execute(mgctx);
 }
 
 /**
@@ -2853,8 +2958,12 @@ int cgroup_attach_task(struct cgroup *dst_cgrp, struct task_struct *leader,
 }
 
 struct task_struct *cgroup_procs_write_start(char *buf, bool threadgroup,
+<<<<<<< HEAD
 					     bool *threadgroup_locked,
 					     struct cgroup *dst_cgrp)
+=======
+					     bool *threadgroup_locked)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	struct task_struct *tsk;
 	pid_t pid;
@@ -2977,7 +3086,11 @@ static int cgroup_update_dfl_csses(struct cgroup *cgrp)
 	DEFINE_CGROUP_MGCTX(mgctx);
 	struct cgroup_subsys_state *d_css;
 	struct cgroup *dsct;
+<<<<<<< HEAD
 	struct ext_css_set *ext_src_set;
+=======
+	struct css_set *src_cset;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	bool has_tasks;
 	int ret;
 
@@ -3008,7 +3121,11 @@ static int cgroup_update_dfl_csses(struct cgroup *cgrp)
 		goto out_finish;
 
 	spin_lock_irq(&css_set_lock);
+<<<<<<< HEAD
 	list_for_each_entry(ext_src_set, &mgctx.preloaded_src_csets,
+=======
+	list_for_each_entry(src_cset, &mgctx.preloaded_src_csets,
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			    mg_src_preload_node) {
 		struct task_struct *task, *ntask;
 
@@ -3690,7 +3807,11 @@ static ssize_t cgroup_pressure_write(struct kernfs_open_file *of, char *buf,
 	cgroup_kn_unlock(of->kn);
 
 	/* Allow only one trigger per file descriptor */
+<<<<<<< HEAD
 	if (ctx->psi.trigger) {
+=======
+	if (of->priv) {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		cgroup_put(cgrp);
 		return -EBUSY;
 	}
@@ -3733,6 +3854,10 @@ static __poll_t cgroup_pressure_poll(struct kernfs_open_file *of,
 					  poll_table *pt)
 {
 	struct cgroup_file_ctx *ctx = of->priv;
+<<<<<<< HEAD
+=======
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	return psi_trigger_poll(&ctx->psi.trigger, of->file, pt);
 }
 
@@ -3792,7 +3917,11 @@ static ssize_t cgroup_freeze_write(struct kernfs_open_file *of,
 
 static int cgroup_file_open(struct kernfs_open_file *of)
 {
+<<<<<<< HEAD
 	struct cftype *cft = of->kn->priv;
+=======
+	struct cftype *cft = of_cft(of);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	struct cgroup_file_ctx *ctx;
 	int ret;
 
@@ -3817,7 +3946,11 @@ static int cgroup_file_open(struct kernfs_open_file *of)
 
 static void cgroup_file_release(struct kernfs_open_file *of)
 {
+<<<<<<< HEAD
 	struct cftype *cft = of->kn->priv;
+=======
+	struct cftype *cft = of_cft(of);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	struct cgroup_file_ctx *ctx = of->priv;
 
 	if (cft->release)
@@ -3831,7 +3964,7 @@ static ssize_t cgroup_file_write(struct kernfs_open_file *of, char *buf,
 {
 	struct cgroup_file_ctx *ctx = of->priv;
 	struct cgroup *cgrp = of->kn->parent->priv;
-	struct cftype *cft = of->kn->priv;
+	struct cftype *cft = of_cft(of);
 	struct cgroup_subsys_state *css;
 	int ret;
 
@@ -3881,7 +4014,7 @@ static ssize_t cgroup_file_write(struct kernfs_open_file *of, char *buf,
 
 static __poll_t cgroup_file_poll(struct kernfs_open_file *of, poll_table *pt)
 {
-	struct cftype *cft = of->kn->priv;
+	struct cftype *cft = of_cft(of);
 
 	if (cft->poll)
 		return cft->poll(of, pt);
@@ -4888,8 +5021,8 @@ static int cgroup_attach_permissions(struct cgroup *src_cgrp,
 	return ret;
 }
 
-static ssize_t cgroup_procs_write(struct kernfs_open_file *of,
-				  char *buf, size_t nbytes, loff_t off)
+static ssize_t __cgroup_procs_write(struct kernfs_open_file *of, char *buf,
+				    bool threadgroup)
 {
 	struct cgroup_file_ctx *ctx = of->priv;
 	struct cgroup *src_cgrp, *dst_cgrp;
@@ -4902,7 +5035,11 @@ static ssize_t cgroup_procs_write(struct kernfs_open_file *of,
 	if (!dst_cgrp)
 		return -ENODEV;
 
+<<<<<<< HEAD
 	task = cgroup_procs_write_start(buf, true, &threadgroup_locked, dst_cgrp);
+=======
+	task = cgroup_procs_write_start(buf, true, &threadgroup_locked);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	ret = PTR_ERR_OR_ZERO(task);
 	if (ret)
 		goto out_unlock;
@@ -4919,20 +5056,31 @@ static ssize_t cgroup_procs_write(struct kernfs_open_file *of,
 	 */
 	saved_cred = override_creds(of->file->f_cred);
 	ret = cgroup_attach_permissions(src_cgrp, dst_cgrp,
+<<<<<<< HEAD
 					of->file->f_path.dentry->d_sb, true,
 					ctx->ns);
+=======
+					of->file->f_path.dentry->d_sb,
+					threadgroup, ctx->ns);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	revert_creds(saved_cred);
 	if (ret)
 		goto out_finish;
 
-	ret = cgroup_attach_task(dst_cgrp, task, true);
+	ret = cgroup_attach_task(dst_cgrp, task, threadgroup);
 
 out_finish:
 	cgroup_procs_write_finish(task, threadgroup_locked);
 out_unlock:
 	cgroup_kn_unlock(of->kn);
 
-	return ret ?: nbytes;
+	return ret;
+}
+
+static ssize_t cgroup_procs_write(struct kernfs_open_file *of,
+				  char *buf, size_t nbytes, loff_t off)
+{
+	return __cgroup_procs_write(of, buf, true) ?: nbytes;
 }
 
 static void *cgroup_threads_start(struct seq_file *s, loff_t *pos)
@@ -4943,6 +5091,7 @@ static void *cgroup_threads_start(struct seq_file *s, loff_t *pos)
 static ssize_t cgroup_threads_write(struct kernfs_open_file *of,
 				    char *buf, size_t nbytes, loff_t off)
 {
+<<<<<<< HEAD
 	struct cgroup_file_ctx *ctx = of->priv;
 	struct cgroup *src_cgrp, *dst_cgrp;
 	struct task_struct *task;
@@ -4987,6 +5136,9 @@ out_unlock:
 	cgroup_kn_unlock(of->kn);
 
 	return ret ?: nbytes;
+=======
+	return __cgroup_procs_write(of, buf, false) ?: nbytes;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 /* cgroup core interface files for the default hierarchy */
@@ -5204,8 +5356,10 @@ static void css_release_work_fn(struct work_struct *work)
 		if (cgrp->kn)
 			RCU_INIT_POINTER(*(void __rcu __force **)&cgrp->kn->priv,
 					 NULL);
+		if (css->parent && !css->parent->parent &&
+		    list_empty(&css->parent->children))
+			wake_up(&cgrp->root->wait);
 	}
-
 	mutex_unlock(&cgroup_mutex);
 
 	INIT_RCU_WORK(&css->destroy_rwork, css_free_rwork_fn);
@@ -6197,19 +6351,18 @@ err:
 static void cgroup_css_set_put_fork(struct kernel_clone_args *kargs)
 	__releases(&cgroup_threadgroup_rwsem) __releases(&cgroup_mutex)
 {
+	struct cgroup *cgrp = kargs->cgrp;
+	struct css_set *cset = kargs->cset;
+
 	cgroup_threadgroup_change_end(current);
 
+	if (cset) {
+		put_css_set(cset);
+		kargs->cset = NULL;
+	}
+
 	if (kargs->flags & CLONE_INTO_CGROUP) {
-		struct cgroup *cgrp = kargs->cgrp;
-		struct css_set *cset = kargs->cset;
-
 		mutex_unlock(&cgroup_mutex);
-
-		if (cset) {
-			put_css_set(cset);
-			kargs->cset = NULL;
-		}
-
 		if (cgrp) {
 			cgroup_put(cgrp);
 			kargs->cgrp = NULL;
@@ -6371,6 +6524,9 @@ void cgroup_exit(struct task_struct *tsk)
 	css_set_move_task(tsk, cset, NULL, false);
 	list_add_tail(&tsk->cg_list, &cset->dying_tasks);
 	cset->nr_tasks--;
+
+	if (dl_task(tsk))
+		dec_dl_tasks_cs(tsk);
 
 	WARN_ON_ONCE(cgroup_task_frozen(tsk));
 	if (unlikely(cgroup_task_freeze(tsk)))
@@ -6608,74 +6764,51 @@ int cgroup_parse_float(const char *input, unsigned dec_shift, s64 *v)
  */
 #ifdef CONFIG_SOCK_CGROUP_DATA
 
-#if defined(CONFIG_CGROUP_NET_PRIO) || defined(CONFIG_CGROUP_NET_CLASSID)
-
-DEFINE_SPINLOCK(cgroup_sk_update_lock);
-static bool cgroup_sk_alloc_disabled __read_mostly;
-
-void cgroup_sk_alloc_disable(void)
-{
-	if (cgroup_sk_alloc_disabled)
-		return;
-	pr_info("cgroup: disabling cgroup2 socket matching due to net_prio or net_cls activation\n");
-	cgroup_sk_alloc_disabled = true;
-}
-
-#else
-
-#define cgroup_sk_alloc_disabled	false
-
-#endif
-
 void cgroup_sk_alloc(struct sock_cgroup_data *skcd)
 {
-	if (cgroup_sk_alloc_disabled) {
-		skcd->no_refcnt = 1;
-		return;
-	}
-
-	/* Don't associate the sock with unrelated interrupted task's cgroup. */
-	if (in_interrupt())
-		return;
+	struct cgroup *cgroup;
 
 	rcu_read_lock();
+	/* Don't associate the sock with unrelated interrupted task's cgroup. */
+	if (in_interrupt()) {
+		cgroup = &cgrp_dfl_root.cgrp;
+		cgroup_get(cgroup);
+		goto out;
+	}
 
 	while (true) {
 		struct css_set *cset;
 
 		cset = task_css_set(current);
 		if (likely(cgroup_tryget(cset->dfl_cgrp))) {
-			skcd->val = (unsigned long)cset->dfl_cgrp;
-			cgroup_bpf_get(cset->dfl_cgrp);
+			cgroup = cset->dfl_cgrp;
 			break;
 		}
 		cpu_relax();
 	}
-
+out:
+	skcd->cgroup = cgroup;
+	cgroup_bpf_get(cgroup);
 	rcu_read_unlock();
 }
 
 void cgroup_sk_clone(struct sock_cgroup_data *skcd)
 {
-	if (skcd->val) {
-		if (skcd->no_refcnt)
-			return;
-		/*
-		 * We might be cloning a socket which is left in an empty
-		 * cgroup and the cgroup might have already been rmdir'd.
-		 * Don't use cgroup_get_live().
-		 */
-		cgroup_get(sock_cgroup_ptr(skcd));
-		cgroup_bpf_get(sock_cgroup_ptr(skcd));
-	}
+	struct cgroup *cgrp = sock_cgroup_ptr(skcd);
+
+	/*
+	 * We might be cloning a socket which is left in an empty
+	 * cgroup and the cgroup might have already been rmdir'd.
+	 * Don't use cgroup_get_live().
+	 */
+	cgroup_get(cgrp);
+	cgroup_bpf_get(cgrp);
 }
 
 void cgroup_sk_free(struct sock_cgroup_data *skcd)
 {
 	struct cgroup *cgrp = sock_cgroup_ptr(skcd);
 
-	if (skcd->no_refcnt)
-		return;
 	cgroup_bpf_put(cgrp);
 	cgroup_put(cgrp);
 }

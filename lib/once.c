@@ -88,6 +88,10 @@ void __do_once_slow_done(bool *done, struct static_key_true *once_key,
 {
 	*done = true;
 	mutex_unlock(&once_mutex);
+<<<<<<< HEAD
 	once_disable_jump(once_key);
+=======
+	once_disable_jump(once_key, mod);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 EXPORT_SYMBOL(__do_once_slow_done);

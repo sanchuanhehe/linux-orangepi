@@ -204,7 +204,6 @@ config BRIDGE_NETFILTER
 source "net/netfilter/Kconfig"
 source "net/ipv4/netfilter/Kconfig"
 source "net/ipv6/netfilter/Kconfig"
-source "net/decnet/netfilter/Kconfig"
 source "net/bridge/netfilter/Kconfig"
 
 endif
@@ -221,7 +220,6 @@ source "net/802/Kconfig"
 source "net/bridge/Kconfig"
 source "net/dsa/Kconfig"
 source "net/8021q/Kconfig"
-source "net/decnet/Kconfig"
 source "net/llc/Kconfig"
 source "drivers/net/appletalk/Kconfig"
 source "net/x25/Kconfig"
@@ -458,6 +456,36 @@ config ETHTOOL_NETLINK
 	  An alternative userspace interface for ethtool based on generic
 	  netlink. It provides better extensibility and some new features,
 	  e.g. notification messages.
+
+source "net/newip/Kconfig"
+
+config TCP_NATA_URC
+        bool "Nata Ultra-Reliable Connection Feature"
+        default n
+        help
+          This option enables the Nata Ultra-Reliable Connection feature.
+          When enabled, the kernel will include support for CONFIG_TCP_NATA_URC.
+
+config TCP_NATA_STL
+        bool "Nata Satellite Connection Feature"
+        default n
+        help
+          This option enables the Nata Satellite Connection feature.
+          When enabled, the kernel will include support for CONFIG_TCP_NATA_STL.
+
+config LOWPOWER_PROTOCOL
+        bool "lowpower protocol"
+        default n
+        help
+          This option enables the lowpower protocol feature.
+          When enabled, the kernel will include support for CONFIG_LOWPOWER_PROTOCOL.
+
+config TCP_SOCK_DESTROY
+        bool "TCP socket destroy feature"
+        default n
+        help
+          This option enables the tcp sock destroy feature.
+          When enabled, the kernel will include support for CONFIG_TCP_SOCK_DESTROY.
 
 endif   # if NET
 

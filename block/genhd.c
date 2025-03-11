@@ -663,6 +663,14 @@ void blk_unregister_region(dev_t devt, unsigned long range)
 
 EXPORT_SYMBOL(blk_unregister_region);
 
+void blk_delete_region(dev_t devt, unsigned long range,
+			struct kobject *(*probe)(dev_t, int *, void *))
+{
+	kobj_delete(bdev_map, devt, range, probe);
+}
+
+EXPORT_SYMBOL(blk_delete_region);
+
 static struct kobject *exact_match(dev_t devt, int *partno, void *data)
 {
 	struct gendisk *p = data;
@@ -1557,6 +1565,7 @@ static void disk_release(struct device *dev)
 	struct gendisk *disk = dev_to_disk(dev);
 
 	might_sleep();
+	blk_mq_cancel_work_sync(disk->queue);
 
 	blk_free_devt(dev->devt);
 	disk_release_events(disk);

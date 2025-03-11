@@ -1,6 +1,11 @@
+<<<<<<< HEAD
 #ifndef _XT_QUOTA_H
 #define _XT_QUOTA_H
 #include <linux/types.h>
+=======
+#ifndef _XT_QUOTA2_H
+#define _XT_QUOTA2_H
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 enum xt_quota_flags {
 	XT_QUOTA_INVERT    = 1 << 0,
@@ -23,4 +28,8 @@ struct xt_quota_mtinfo2 {
 	struct xt_quota_counter *master __attribute__((aligned(8)));
 };
 
+<<<<<<< HEAD
 #endif /* _XT_QUOTA_H */
+=======
+#endif /* _XT_QUOTA2_H */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release

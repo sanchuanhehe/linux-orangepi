@@ -833,7 +833,11 @@ static int virtblk_probe(struct virtio_device *vdev)
 			dev_err(&vdev->dev,
 				"virtio_blk: invalid block size: 0x%x\n",
 				blk_size);
+<<<<<<< HEAD
 			goto out_cleanup_disk;
+=======
+			goto out_free_tags;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		}
 
 		blk_queue_logical_block_size(q, blk_size);

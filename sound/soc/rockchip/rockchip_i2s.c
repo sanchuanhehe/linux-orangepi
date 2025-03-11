@@ -1095,6 +1095,7 @@ static int rockchip_i2s_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+<<<<<<< HEAD
 	ret = rockchip_i2s_init_dai(i2s, res, &dai);
 	if (ret)
 		goto err_clk;
@@ -1120,6 +1121,40 @@ static int rockchip_i2s_probe(struct platform_device *pdev)
 	 * Alternatively, performing the registers R/W before
 	 * pm_runtime_enable is also a good option.
 	 */
+=======
+	i2s->mclk = devm_clk_get(&pdev->dev, "i2s_clk");
+	if (IS_ERR(i2s->mclk)) {
+		dev_err(&pdev->dev, "Can't retrieve i2s master clock\n");
+		ret = PTR_ERR(i2s->mclk);
+		goto err_clk;
+	}
+
+	regs = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
+	if (IS_ERR(regs)) {
+		ret = PTR_ERR(regs);
+		goto err_clk;
+	}
+
+	i2s->regmap = devm_regmap_init_mmio(&pdev->dev, regs,
+					    &rockchip_i2s_regmap_config);
+	if (IS_ERR(i2s->regmap)) {
+		dev_err(&pdev->dev,
+			"Failed to initialise managed register map\n");
+		ret = PTR_ERR(i2s->regmap);
+		goto err_clk;
+	}
+
+	i2s->playback_dma_data.addr = res->start + I2S_TXDR;
+	i2s->playback_dma_data.addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
+	i2s->playback_dma_data.maxburst = 4;
+
+	i2s->capture_dma_data.addr = res->start + I2S_RXDR;
+	i2s->capture_dma_data.addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
+	i2s->capture_dma_data.maxburst = 4;
+
+	dev_set_drvdata(&pdev->dev, i2s);
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	pm_runtime_enable(&pdev->dev);
 	if (!pm_runtime_enabled(&pdev->dev)) {
 		ret = i2s_runtime_resume(&pdev->dev);
@@ -1156,7 +1191,10 @@ err_pm_disable:
 	pm_runtime_disable(&pdev->dev);
 err_clk:
 	clk_disable_unprepare(i2s->hclk);
+<<<<<<< HEAD
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	return ret;
 }
 

@@ -9,7 +9,10 @@ obj-$(CONFIG_SW_SYNC)		+= sw_sync.o
 obj-$(CONFIG_SW_SYNC_DEBUG)	+= sync_debug.o
 obj-$(CONFIG_UDMABUF)		+= udmabuf.o
 obj-$(CONFIG_DMABUF_SYSFS_STATS) += dma-buf-sysfs-stats.o
+<<<<<<< HEAD
 obj-$(CONFIG_DMABUF_HEAPS_ROCKCHIP) += rk_heaps/
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 dmabuf_selftests-y := \
 	selftest.o \
@@ -17,3 +20,5 @@ dmabuf_selftests-y := \
 	st-dma-fence-chain.o
 
 obj-$(CONFIG_DMABUF_SELFTESTS)	+= dmabuf_selftests.o
+
+obj-$(CONFIG_DMABUF_PROCESS_INFO)	+= dma-buf-process-info.o

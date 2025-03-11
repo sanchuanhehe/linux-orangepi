@@ -362,10 +362,9 @@ static int pidlist_array_load(struct cgroup *cgrp, enum cgroup_filetype type,
 	}
 	css_task_iter_end(&it);
 	length = n;
-	/* now sort & (if procs) strip out duplicates */
+	/* now sort & strip out duplicates (tgids or recycled thread PIDs) */
 	sort(array, length, sizeof(pid_t), cmppid, NULL);
-	if (type == CGROUP_FILE_PROCS)
-		length = pidlist_uniq(array, length);
+	length = pidlist_uniq(array, length);
 
 	l = cgroup_pidlist_find_create(cgrp, type);
 	if (!l) {
@@ -514,7 +513,12 @@ static ssize_t __cgroup1_procs_write(struct kernfs_open_file *of,
 	 */
 	cred = of->file->f_cred;
 	tcred = get_task_cred(task);
+#ifdef CONFIG_HYPERHOLD
+	if (!uid_eq(cred->euid, GLOBAL_MEMMGR_UID) &&
+	    !uid_eq(cred->euid, GLOBAL_ROOT_UID) &&
+#else
 	if (!uid_eq(cred->euid, GLOBAL_ROOT_UID) &&
+#endif
 	    !uid_eq(cred->euid, tcred->uid) &&
 	    !uid_eq(cred->euid, tcred->suid) &&
 	    !ns_capable(tcred->user_ns, CAP_SYS_NICE))
@@ -673,6 +677,7 @@ int proc_cgroupstats_show(struct seq_file *m, void *v)
 {
 	struct cgroup_subsys *ss;
 	int i;
+	bool dead;
 
 	seq_puts(m, "#subsys_name\thierarchy\tnum_cgroups\tenabled\n");
 	/*
@@ -683,10 +688,13 @@ int proc_cgroupstats_show(struct seq_file *m, void *v)
 	mutex_lock(&cgroup_mutex);
 
 	for_each_subsys(ss, i)
+	for_each_subsys(ss, i) {
+		dead = percpu_ref_is_dying(&ss->root->cgrp.self.refcnt);
 		seq_printf(m, "%s\t%d\t%d\t%d\n",
-			   ss->legacy_name, ss->root->hierarchy_id,
-			   atomic_read(&ss->root->nr_cgrps),
+			   ss->legacy_name, dead ? 0 : ss->root->hierarchy_id,
+			   dead ? 0 : atomic_read(&ss->root->nr_cgrps),
 			   cgroup_ssid_enabled(i));
+	}
 
 	mutex_unlock(&cgroup_mutex);
 	return 0;
@@ -929,15 +937,11 @@ int cgroup1_parse_param(struct fs_context *fc, struct fs_parameter *param)
 
 	opt = fs_parse(fc, cgroup1_fs_parameters, param, &result);
 	if (opt == -ENOPARAM) {
-		if (strcmp(param->key, "source") == 0) {
-			if (param->type != fs_value_is_string)
-				return invalf(fc, "Non-string source");
-			if (fc->source)
-				return invalf(fc, "Multiple sources not supported");
-			fc->source = param->string;
-			param->string = NULL;
-			return 0;
-		}
+		int ret;
+
+		ret = vfs_parse_fs_param_source(fc, param);
+		if (ret != -ENOPARAM)
+			return ret;
 		for_each_subsys(ss, i) {
 			if (strcmp(param->key, ss->legacy_name))
 				continue;

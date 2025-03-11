@@ -137,8 +137,11 @@ typedef int (*sk_read_actor_t)(read_descriptor_t *, struct sk_buff *,
 
 struct proto_ops {
 	int		family;
+<<<<<<< HEAD
 	unsigned int	flags;	// ANDROID - removed in 5.10.162, but remains to
 				// preserve ABI.  It is not used anywhere.
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	struct module	*owner;
 	int		(*release)   (struct socket *sock);
 	int		(*bind)	     (struct socket *sock,

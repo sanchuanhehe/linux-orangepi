@@ -3,6 +3,7 @@ SECTIONS {
 	.plt 0 : { BYTE(0) }
 	.init.plt 0 : { BYTE(0) }
 	.text.ftrace_trampoline 0 : { BYTE(0) }
+<<<<<<< HEAD
 
 #ifdef CONFIG_CRYPTO_FIPS140
 	/*
@@ -32,5 +33,7 @@ SECTIONS {
 		*(.initcalls._end)
 	}
 #endif
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 #endif

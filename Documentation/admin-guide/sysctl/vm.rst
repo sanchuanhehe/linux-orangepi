@@ -25,7 +25,6 @@ files can be found in mm/swap.c.
 Currently, these files are in /proc/sys/vm:
 
 - admin_reserve_kbytes
-- block_dump
 - compact_memory
 - compaction_proactiveness
 - compact_unevictable_allowed
@@ -105,13 +104,6 @@ and add the sum of their RSS.
 On x86_64 this is about 128MB.
 
 Changing this takes effect whenever an application requests memory.
-
-
-block_dump
-==========
-
-block_dump enables block I/O debugging when set to a nonzero value. More
-information on block I/O debugging is in Documentation/admin-guide/laptops/laptop-mode.rst.
 
 
 compact_memory
@@ -970,7 +962,7 @@ how much memory needs to be free before kswapd goes back to sleep.
 
 The unit is in fractions of 10,000. The default value of 10 means the
 distances between watermarks are 0.1% of the available memory in the
-node/system. The maximum value is 1000, or 10% of memory.
+node/system. The maximum value is 3000, or 30% of memory.
 
 A high rate of threads entering direct reclaim (allocstall) or kswapd
 going to sleep prematurely (kswapd_low_wmark_hit_quickly) can indicate

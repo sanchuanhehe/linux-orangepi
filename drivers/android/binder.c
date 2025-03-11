@@ -66,7 +66,14 @@
 #include <linux/syscalls.h>
 #include <linux/task_work.h>
 #include <linux/sizes.h>
+<<<<<<< HEAD
 #include <linux/android_vendor.h>
+=======
+#ifdef CONFIG_BINDER_TRANSACTION_PROC_BRIEF
+#include <linux/trace_clock.h>
+#include <linux/proc_fs.h>
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 #include <uapi/linux/sched/types.h>
 #include <uapi/linux/android/binder.h>
@@ -94,7 +101,29 @@ static atomic_t binder_last_id;
 static int proc_show(struct seq_file *m, void *unused);
 DEFINE_SHOW_ATTRIBUTE(proc);
 
+#ifdef CONFIG_BINDER_TRANSACTION_PROC_BRIEF
+static int binder_transaction_proc_show(struct seq_file *m, void *unused);
+DEFINE_PROC_SHOW_ATTRIBUTE(binder_transaction_proc);
+#endif
+
 #define FORBIDDEN_MMAP_FLAGS                (VM_WRITE)
+
+#ifdef CONFIG_ACCESS_TOKENID
+#define ENABLE_ACCESS_TOKENID 1
+#else
+#define ENABLE_ACCESS_TOKENID 0
+#endif /* CONFIG_ACCESS_TOKENID */
+
+#ifdef CONFIG_BINDER_SENDER_INFO
+#define ENABLE_BINDER_SENDER_INFO 1
+#else
+#define ENABLE_BINDER_SENDER_INFO 0
+#endif /* CONFIG_BINDER_SENDER_INFO */
+
+#define ACCESS_TOKENID_FEATURE_VALUE (ENABLE_ACCESS_TOKENID << 0)
+#define BINDER_SENDER_INFO_FEATURE_VALUE (ENABLE_BINDER_SENDER_INFO << 2)
+
+#define BINDER_CURRENT_FEATURE_SET (ACCESS_TOKENID_FEATURE_VALUE | BINDER_SENDER_INFO_FEATURE_VALUE)
 
 enum {
 	BINDER_DEBUG_USER_ERROR             = 1U << 0,
@@ -225,6 +254,96 @@ enum binder_deferred_state {
 	BINDER_DEFERRED_RELEASE      = 0x02,
 };
 
+<<<<<<< HEAD
+=======
+/**
+ * struct binder_proc - binder process bookkeeping
+ * @proc_node:            element for binder_procs list
+ * @threads:              rbtree of binder_threads in this proc
+ *                        (protected by @inner_lock)
+ * @nodes:                rbtree of binder nodes associated with
+ *                        this proc ordered by node->ptr
+ *                        (protected by @inner_lock)
+ * @refs_by_desc:         rbtree of refs ordered by ref->desc
+ *                        (protected by @outer_lock)
+ * @refs_by_node:         rbtree of refs ordered by ref->node
+ *                        (protected by @outer_lock)
+ * @waiting_threads:      threads currently waiting for proc work
+ *                        (protected by @inner_lock)
+ * @pid                   PID of group_leader of process
+ *                        (invariant after initialized)
+ * @tsk                   task_struct for group_leader of process
+ *                        (invariant after initialized)
+ * @cred                  struct cred associated with the `struct file`
+ *                        in binder_open()
+ *                        (invariant after initialized)
+ * @deferred_work_node:   element for binder_deferred_list
+ *                        (protected by binder_deferred_lock)
+ * @deferred_work:        bitmap of deferred work to perform
+ *                        (protected by binder_deferred_lock)
+ * @is_dead:              process is dead and awaiting free
+ *                        when outstanding transactions are cleaned up
+ *                        (protected by @inner_lock)
+ * @todo:                 list of work for this process
+ *                        (protected by @inner_lock)
+ * @stats:                per-process binder statistics
+ *                        (atomics, no lock needed)
+ * @delivered_death:      list of delivered death notification
+ *                        (protected by @inner_lock)
+ * @max_threads:          cap on number of binder threads
+ *                        (protected by @inner_lock)
+ * @requested_threads:    number of binder threads requested but not
+ *                        yet started. In current implementation, can
+ *                        only be 0 or 1.
+ *                        (protected by @inner_lock)
+ * @requested_threads_started: number binder threads started
+ *                        (protected by @inner_lock)
+ * @tmp_ref:              temporary reference to indicate proc is in use
+ *                        (protected by @inner_lock)
+ * @default_priority:     default scheduler priority
+ *                        (invariant after initialized)
+ * @debugfs_entry:        debugfs node
+ * @alloc:                binder allocator bookkeeping
+ * @context:              binder_context for this proc
+ *                        (invariant after initialized)
+ * @inner_lock:           can nest under outer_lock and/or node lock
+ * @outer_lock:           no nesting under innor or node lock
+ *                        Lock order: 1) outer, 2) node, 3) inner
+ * @binderfs_entry:       process-specific binderfs log file
+ *
+ * Bookkeeping structure for binder processes
+ */
+struct binder_proc {
+	struct hlist_node proc_node;
+	struct rb_root threads;
+	struct rb_root nodes;
+	struct rb_root refs_by_desc;
+	struct rb_root refs_by_node;
+	struct list_head waiting_threads;
+	int pid;
+	struct task_struct *tsk;
+	const struct cred *cred;
+	struct hlist_node deferred_work_node;
+	int deferred_work;
+	bool is_dead;
+
+	struct list_head todo;
+	struct binder_stats stats;
+	struct list_head delivered_death;
+	int max_threads;
+	int requested_threads;
+	int requested_threads_started;
+	int tmp_ref;
+	long default_priority;
+	struct dentry *debugfs_entry;
+	struct binder_alloc alloc;
+	struct binder_context *context;
+	spinlock_t inner_lock;
+	spinlock_t outer_lock;
+	struct dentry *binderfs_entry;
+};
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 enum {
 	BINDER_LOOPER_STATE_REGISTERED  = 0x01,
 	BINDER_LOOPER_STATE_ENTERED     = 0x02,
@@ -235,6 +354,143 @@ enum {
 };
 
 /**
+<<<<<<< HEAD
+=======
+ * struct binder_thread - binder thread bookkeeping
+ * @proc:                 binder process for this thread
+ *                        (invariant after initialization)
+ * @rb_node:              element for proc->threads rbtree
+ *                        (protected by @proc->inner_lock)
+ * @waiting_thread_node:  element for @proc->waiting_threads list
+ *                        (protected by @proc->inner_lock)
+ * @pid:                  PID for this thread
+ *                        (invariant after initialization)
+ * @looper:               bitmap of looping state
+ *                        (only accessed by this thread)
+ * @looper_needs_return:  looping thread needs to exit driver
+ *                        (no lock needed)
+ * @transaction_stack:    stack of in-progress transactions for this thread
+ *                        (protected by @proc->inner_lock)
+ * @todo:                 list of work to do for this thread
+ *                        (protected by @proc->inner_lock)
+ * @process_todo:         whether work in @todo should be processed
+ *                        (protected by @proc->inner_lock)
+ * @return_error:         transaction errors reported by this thread
+ *                        (only accessed by this thread)
+ * @reply_error:          transaction errors reported by target thread
+ *                        (protected by @proc->inner_lock)
+ * @wait:                 wait queue for thread work
+ * @stats:                per-thread statistics
+ *                        (atomics, no lock needed)
+ * @tmp_ref:              temporary reference to indicate thread is in use
+ *                        (atomic since @proc->inner_lock cannot
+ *                        always be acquired)
+ * @is_dead:              thread is dead and awaiting free
+ *                        when outstanding transactions are cleaned up
+ *                        (protected by @proc->inner_lock)
+ *
+ * Bookkeeping structure for binder threads.
+ */
+struct binder_thread {
+	struct binder_proc *proc;
+	struct rb_node rb_node;
+	struct list_head waiting_thread_node;
+	int pid;
+	int looper;              /* only modified by this thread */
+	bool looper_need_return; /* can be written by other thread */
+	struct binder_transaction *transaction_stack;
+	struct list_head todo;
+	bool process_todo;
+	struct binder_error return_error;
+	struct binder_error reply_error;
+	wait_queue_head_t wait;
+	struct binder_stats stats;
+	atomic_t tmp_ref;
+	bool is_dead;
+#ifdef CONFIG_ACCESS_TOKENID
+	struct access_token tokens;
+#endif /* CONFIG_ACCESS_TOKENID */
+#ifdef CONFIG_BINDER_SENDER_INFO
+	__u64 sender_pid_nr;
+#endif /* CONFIG_BINDER_SENDER_INFO */
+};
+
+/**
+ * struct binder_txn_fd_fixup - transaction fd fixup list element
+ * @fixup_entry:          list entry
+ * @file:                 struct file to be associated with new fd
+ * @offset:               offset in buffer data to this fixup
+ *
+ * List element for fd fixups in a transaction. Since file
+ * descriptors need to be allocated in the context of the
+ * target process, we pass each fd to be processed in this
+ * struct.
+ */
+struct binder_txn_fd_fixup {
+	struct list_head fixup_entry;
+	struct file *file;
+	size_t offset;
+};
+
+struct binder_transaction {
+	int debug_id;
+	struct binder_work work;
+	struct binder_thread *from;
+#ifdef CONFIG_BINDER_TRANSACTION_PROC_BRIEF
+	int async_from_pid;
+	int async_from_tid;
+	u64 timestamp;
+#endif
+	struct binder_transaction *from_parent;
+	struct binder_proc *to_proc;
+	struct binder_thread *to_thread;
+	struct binder_transaction *to_parent;
+	unsigned need_reply:1;
+	/* unsigned is_dead:1; */	/* not used at the moment */
+
+	struct binder_buffer *buffer;
+	unsigned int	code;
+	unsigned int	flags;
+	long	priority;
+	long	saved_priority;
+	kuid_t	sender_euid;
+	struct list_head fd_fixups;
+	binder_uintptr_t security_ctx;
+	/**
+	 * @lock:  protects @from, @to_proc, and @to_thread
+	 *
+	 * @from, @to_proc, and @to_thread can be set to NULL
+	 * during thread teardown
+	 */
+	spinlock_t lock;
+#ifdef CONFIG_ACCESS_TOKENID
+	u64 sender_tokenid;
+	u64 first_tokenid;
+#endif /* CONFIG_ACCESS_TOKENID */
+};
+
+/**
+ * struct binder_object - union of flat binder object types
+ * @hdr:   generic object header
+ * @fbo:   binder object (nodes and refs)
+ * @fdo:   file descriptor object
+ * @bbo:   binder buffer pointer
+ * @fdao:  file descriptor array
+ *
+ * Used for type-independent object copies
+ */
+struct binder_object {
+	union {
+		struct binder_object_header hdr;
+		struct flat_binder_object fbo;
+		struct binder_fd_object fdo;
+		struct binder_buffer_object bbo;
+		struct binder_fd_array_object fdao;
+	};
+};
+
+/**
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
  * binder_proc_lock() - Acquire outer lock for given binder_proc
  * @proc:         struct binder_proc to acquire
  *
@@ -453,6 +709,16 @@ binder_enqueue_thread_work_ilocked(struct binder_thread *thread,
 {
 	WARN_ON(!list_empty(&thread->waiting_thread_node));
 	binder_enqueue_work_ilocked(work, &thread->todo);
+
+	/* (e)poll-based threads require an explicit wakeup signal when
+	 * queuing their own work; they rely on these events to consume
+	 * messages without I/O block. Without it, threads risk waiting
+	 * indefinitely without handling the work.
+	 */
+	if (thread->looper & BINDER_LOOPER_STATE_POLL &&
+	    thread->pid == current->pid && !thread->process_todo)
+		wake_up_interruptible_sync(&thread->wait);
+
 	thread->process_todo = true;
 }
 
@@ -511,6 +777,16 @@ binder_defer_work(struct binder_proc *proc, enum binder_deferred_state defer);
 static void binder_free_thread(struct binder_thread *thread);
 static void binder_free_proc(struct binder_proc *proc);
 static void binder_inc_node_tmpref_ilocked(struct binder_node *node);
+
+#ifdef CONFIG_BINDER_TRANSACTION_PROC_BRIEF
+static inline u64 binder_clock(void)
+{
+#ifdef CONFIG_TRACE_CLOCK
+	return trace_clock_local();
+#endif
+	return 0;
+}
+#endif
 
 static bool binder_has_work_ilocked(struct binder_thread *thread,
 				    bool do_proc_work)
@@ -1798,8 +2074,22 @@ static size_t binder_get_object(struct binder_proc *proc,
 	size_t object_size = 0;
 
 	read_size = min_t(size_t, sizeof(*object), buffer->data_size - offset);
+<<<<<<< HEAD
 	if (offset > buffer->data_size || read_size < sizeof(*hdr))
+=======
+	if (offset > buffer->data_size || read_size < sizeof(*hdr) ||
+	    !IS_ALIGNED(offset, sizeof(u32)))
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		return 0;
+	if (u) {
+		if (copy_from_user(object, u + offset, read_size))
+			return 0;
+	} else {
+		if (binder_alloc_copy_from_buffer(&proc->alloc, object, buffer,
+						  offset, read_size))
+			return 0;
+	}
+
 	if (u) {
 		if (copy_from_user(object, u + offset, read_size))
 			return 0;
@@ -2033,24 +2323,23 @@ static void binder_deferred_fd_close(int fd)
 static void binder_transaction_buffer_release(struct binder_proc *proc,
 					      struct binder_thread *thread,
 					      struct binder_buffer *buffer,
-					      binder_size_t failed_at,
+					      binder_size_t off_end_offset,
 					      bool is_failure)
 {
 	int debug_id = buffer->debug_id;
-	binder_size_t off_start_offset, buffer_offset, off_end_offset;
+	binder_size_t off_start_offset, buffer_offset;
 
 	binder_debug(BINDER_DEBUG_TRANSACTION,
 		     "%d buffer release %d, size %zd-%zd, failed at %llx\n",
 		     proc->pid, buffer->debug_id,
 		     buffer->data_size, buffer->offsets_size,
-		     (unsigned long long)failed_at);
+		     (unsigned long long)off_end_offset);
 
 	if (buffer->target_node)
 		binder_dec_node(buffer->target_node, 1, 0);
 
 	off_start_offset = ALIGN(buffer->data_size, sizeof(void *));
-	off_end_offset = is_failure && failed_at ? failed_at :
-				off_start_offset + buffer->offsets_size;
+
 	for (buffer_offset = off_start_offset; buffer_offset < off_end_offset;
 	     buffer_offset += sizeof(binder_size_t)) {
 		struct binder_object_header *hdr;
@@ -2210,6 +2499,21 @@ static void binder_transaction_buffer_release(struct binder_proc *proc,
 	}
 }
 
+/* Clean up all the objects in the buffer */
+static inline void binder_release_entire_buffer(struct binder_proc *proc,
+						struct binder_thread *thread,
+						struct binder_buffer *buffer,
+						bool is_failure)
+{
+	binder_size_t off_end_offset;
+
+	off_end_offset = ALIGN(buffer->data_size, sizeof(void *));
+	off_end_offset += buffer->offsets_size;
+
+	binder_transaction_buffer_release(proc, thread, buffer,
+					  off_end_offset, is_failure);
+}
+
 static int binder_translate_binder(struct flat_binder_object *fp,
 				   struct binder_transaction *t,
 				   struct binder_thread *thread)
@@ -2234,8 +2538,12 @@ static int binder_translate_binder(struct flat_binder_object *fp,
 		ret = -EINVAL;
 		goto done;
 	}
+<<<<<<< HEAD
 	if (security_binder_transfer_binder(binder_get_cred(proc),
 					    binder_get_cred(target_proc))) {
+=======
+	if (security_binder_transfer_binder(proc->cred, target_proc->cred)) {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		ret = -EPERM;
 		goto done;
 	}
@@ -2281,8 +2589,12 @@ static int binder_translate_handle(struct flat_binder_object *fp,
 				  proc->pid, thread->pid, fp->handle);
 		return -EINVAL;
 	}
+<<<<<<< HEAD
 	if (security_binder_transfer_binder(binder_get_cred(proc),
 					    binder_get_cred(target_proc))) {
+=======
+	if (security_binder_transfer_binder(proc->cred, target_proc->cred)) {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		ret = -EPERM;
 		goto done;
 	}
@@ -2370,8 +2682,12 @@ static int binder_translate_fd(u32 fd, binder_size_t fd_offset,
 		ret = -EBADF;
 		goto err_fget;
 	}
+<<<<<<< HEAD
 	ret = security_binder_transfer_file(binder_get_cred(proc),
 					    binder_get_cred(target_proc), file);
+=======
+	ret = security_binder_transfer_file(proc->cred, target_proc->cred, file);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (ret < 0) {
 		ret = -EPERM;
 		goto err_security;
@@ -2761,6 +3077,7 @@ static int binder_fixup_parent(struct list_head *pf_head,
 	buffer_offset = bp->parent_offset +
 			(uintptr_t)parent->buffer - (uintptr_t)b->user_data;
 	return binder_add_fixup(pf_head, buffer_offset, bp->buffer, 0);
+<<<<<<< HEAD
 }
 
 /**
@@ -2811,6 +3128,8 @@ binder_find_outdated_transaction_ilocked(struct binder_transaction *t,
 			return t_queued;
 	}
 	return NULL;
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 /**
@@ -3118,9 +3437,20 @@ static void binder_transaction(struct binder_proc *proc,
 			goto err_dead_binder;
 		}
 		e->to_node = target_node->debug_id;
+<<<<<<< HEAD
 		trace_android_vh_binder_trans(target_proc, proc, thread, tr);
 		if (security_binder_transaction(binder_get_cred(proc),
 					binder_get_cred(target_proc)) < 0) {
+=======
+		if (WARN_ON(proc == target_proc)) {
+			return_error = BR_FAILED_REPLY;
+			return_error_param = -EINVAL;
+			return_error_line = __LINE__;
+			goto err_invalid_target_handle;
+		}
+		if (security_binder_transaction(proc->cred,
+						target_proc->cred) < 0) {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			return_error = BR_FAILED_REPLY;
 			return_error_param = -EPERM;
 			return_error_line = __LINE__;
@@ -3233,11 +3563,24 @@ static void binder_transaction(struct binder_proc *proc,
 			     (u64)tr->data_size, (u64)tr->offsets_size,
 			     (u64)extra_buffers_size);
 
-	if (!reply && !(tr->flags & TF_ONE_WAY))
+	if (!reply && !(tr->flags & TF_ONE_WAY)) {
 		t->from = thread;
-	else
+#ifdef CONFIG_BINDER_TRANSACTION_PROC_BRIEF
+		t->async_from_pid = -1;
+		t->async_from_tid = -1;
+#endif
+	} else {
 		t->from = NULL;
+#ifdef CONFIG_BINDER_TRANSACTION_PROC_BRIEF
+		t->async_from_pid = thread->proc->pid;
+		t->async_from_tid = thread->pid;
+#endif
+}
 	t->sender_euid = task_euid(proc->tsk);
+#ifdef CONFIG_ACCESS_TOKENID
+	t->sender_tokenid = current->token;
+	t->first_tokenid = current->ftoken;
+#endif /* CONFIG_ACCESS_TOKENID */
 	t->to_proc = target_proc;
 	t->to_thread = target_thread;
 	t->code = tr->code;
@@ -3257,8 +3600,12 @@ static void binder_transaction(struct binder_proc *proc,
 		size_t added_size;
 		int max_retries = 100;
 
+<<<<<<< HEAD
 		security_cred_getsecid(binder_get_cred(proc), &secid);
  retry_alloc:
+=======
+		security_cred_getsecid(proc->cred, &secid);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		ret = security_secid_to_secctx(secid, &secctx, &secctx_sz);
 		if (ret == -ENOMEM && max_retries-- > 0) {
 			struct page *dummy_page;
@@ -3640,10 +3987,14 @@ static void binder_transaction(struct binder_proc *proc,
 		return_error_line = __LINE__;
 		goto err_copy_data_failed;
 	}
+<<<<<<< HEAD
 	if (t->buffer->oneway_spam_suspect)
 		tcomplete->type = BINDER_WORK_TRANSACTION_ONEWAY_SPAM_SUSPECT;
 	else
 		tcomplete->type = BINDER_WORK_TRANSACTION_COMPLETE;
+=======
+	tcomplete->type = BINDER_WORK_TRANSACTION_COMPLETE;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	t->work.type = BINDER_WORK_TRANSACTION;
 
 	if (reply) {
@@ -3655,6 +4006,9 @@ static void binder_transaction(struct binder_proc *proc,
 			goto err_dead_proc_or_thread;
 		}
 		BUG_ON(t->buffer->async_transaction != 0);
+#ifdef CONFIG_BINDER_TRANSACTION_PROC_BRIEF
+		t->timestamp = in_reply_to->timestamp;
+#endif
 		binder_pop_transaction_ilocked(target_thread, in_reply_to);
 		binder_enqueue_thread_work_ilocked(target_thread, &t->work);
 		target_proc->outstanding_txns++;
@@ -3677,6 +4031,9 @@ static void binder_transaction(struct binder_proc *proc,
 		t->need_reply = 1;
 		t->from_parent = thread->transaction_stack;
 		thread->transaction_stack = t;
+#ifdef CONFIG_BINDER_TRANSACTION_PROC_BRIEF
+		t->timestamp = binder_clock();
+#endif
 		binder_inner_proc_unlock(proc);
 		return_error = binder_proc_transaction(t,
 				target_proc, target_thread);
@@ -3690,8 +4047,15 @@ static void binder_transaction(struct binder_proc *proc,
 		BUG_ON(target_node == NULL);
 		BUG_ON(t->buffer->async_transaction != 1);
 		binder_enqueue_thread_work(thread, tcomplete);
+<<<<<<< HEAD
 		return_error = binder_proc_transaction(t, target_proc, NULL);
 		if (return_error)
+=======
+#ifdef CONFIG_BINDER_TRANSACTION_PROC_BRIEF
+		t->timestamp = binder_clock();
+#endif
+		if (!binder_proc_transaction(t, target_proc, NULL))
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			goto err_dead_proc_or_thread;
 	}
 	if (target_thread)
@@ -3828,7 +4192,7 @@ binder_free_buf(struct binder_proc *proc,
 		binder_node_inner_unlock(buf_node);
 	}
 	trace_binder_transaction_buffer_release(buffer);
-	binder_transaction_buffer_release(proc, thread, buffer, 0, is_failure);
+	binder_release_entire_buffer(proc, thread, buffer, is_failure);
 	binder_alloc_free_buf(&proc->alloc, buffer);
 }
 
@@ -4702,9 +5066,22 @@ retry:
 			trd->sender_pid =
 				task_tgid_nr_ns(sender,
 						task_active_pid_ns(current));
+<<<<<<< HEAD
 			trace_android_vh_sync_txn_recvd(thread->task, t_from->task);
+=======
+#ifdef CONFIG_BINDER_SENDER_INFO
+			binder_inner_proc_lock(thread->proc);
+			thread->sender_pid_nr = task_tgid_nr(sender);
+			binder_inner_proc_unlock(thread->proc);
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		} else {
 			trd->sender_pid = 0;
+#ifdef CONFIG_BINDER_SENDER_INFO
+			binder_inner_proc_lock(thread->proc);
+			thread->sender_pid_nr = 0;
+			binder_inner_proc_unlock(thread->proc);
+#endif
 		}
 
 		ret = binder_apply_fd_fixups(proc, t);
@@ -4785,6 +5162,12 @@ retry:
 		if (t_from)
 			binder_thread_dec_tmpref(t_from);
 		t->buffer->allow_user_free = 1;
+#ifdef CONFIG_ACCESS_TOKENID
+		binder_inner_proc_lock(thread->proc);
+		thread->tokens.sender_tokenid = t->sender_tokenid;
+		thread->tokens.first_tokenid = t->first_tokenid;
+		binder_inner_proc_unlock(thread->proc);
+#endif /* CONFIG_ACCESS_TOKENID */
 		if (cmd != BR_REPLY && !(t->flags & TF_ONE_WAY)) {
 			binder_inner_proc_lock(thread->proc);
 			t->to_parent = thread->transaction_stack;
@@ -4958,7 +5341,11 @@ static void binder_free_proc(struct binder_proc *proc)
 	}
 	binder_alloc_deferred_release(&proc->alloc);
 	put_task_struct(proc->tsk);
+<<<<<<< HEAD
 	put_cred(eproc->cred);
+=======
+	put_cred(proc->cred);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	binder_stats_deleted(BINDER_STAT_PROC);
 	trace_android_vh_binder_free_proc(proc);
 	kfree(eproc);
@@ -5025,6 +5412,10 @@ static int binder_thread_release(struct binder_proc *proc,
 			t = t->to_parent;
 		} else if (t->from == thread) {
 			t->from = NULL;
+#ifdef CONFIG_BINDER_TRANSACTION_PROC_BRIEF
+			t->async_from_pid = -1;
+			t->async_from_tid = -1;
+#endif
 			t = t->from_parent;
 		} else
 			BUG();
@@ -5073,7 +5464,7 @@ static __poll_t binder_poll(struct file *filp,
 
 	thread = binder_get_thread(proc);
 	if (!thread)
-		return POLLERR;
+		return EPOLLERR;
 
 	binder_inner_proc_lock(thread->proc);
 	thread->looper |= BINDER_LOOPER_STATE_POLL;
@@ -5171,7 +5562,11 @@ static int binder_ioctl_set_ctx_mgr(struct file *filp,
 		ret = -EBUSY;
 		goto out;
 	}
+<<<<<<< HEAD
 	ret = security_binder_set_context_mgr(binder_get_cred(proc));
+=======
+	ret = security_binder_set_context_mgr(proc->cred);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (ret < 0)
 		goto out;
 	if (uid_valid(context->binder_context_mgr_uid)) {
@@ -5477,6 +5872,7 @@ static long binder_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 		break;
 	}
+<<<<<<< HEAD
 	case BINDER_FREEZE: {
 		struct binder_freeze_info info;
 		struct binder_proc **target_procs = NULL, *target_proc;
@@ -5551,10 +5947,22 @@ static long binder_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 		if (copy_to_user(ubuf, &info, sizeof(info))) {
 			ret = -EFAULT;
+=======
+	case BINDER_FEATURE_SET: {
+		struct binder_feature_set __user *features = ubuf;
+
+		if (size != sizeof(struct binder_feature_set)) {
+			ret = -EINVAL;
+			goto err;
+		}
+		if (put_user(BINDER_CURRENT_FEATURE_SET, &features->feature_set)) {
+			ret = -EINVAL;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			goto err;
 		}
 		break;
 	}
+<<<<<<< HEAD
 	case BINDER_ENABLE_ONEWAY_SPAM_DETECTION: {
 		uint32_t enable;
 
@@ -5567,6 +5975,65 @@ static long binder_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		binder_inner_proc_unlock(proc);
 		break;
 	}
+=======
+#ifdef CONFIG_ACCESS_TOKENID
+	case BINDER_GET_ACCESS_TOKEN: {
+		struct access_token __user *tokens = ubuf;
+		u64 token, ftoken;
+
+		if (size != sizeof(struct access_token)) {
+			ret = -EINVAL;
+			goto err;
+		}
+		binder_inner_proc_lock(proc);
+		token = thread->tokens.sender_tokenid;
+		ftoken = thread->tokens.first_tokenid;
+		binder_inner_proc_unlock(proc);
+		if (put_user(token, &tokens->sender_tokenid)) {
+			ret = -EINVAL;
+			goto err;
+		}
+		if (put_user(ftoken, &tokens->first_tokenid)) {
+			ret = -EINVAL;
+			goto err;
+		}
+		break;
+	}
+#endif /* CONFIG_ACCESS_TOKENID */
+
+#ifdef CONFIG_BINDER_SENDER_INFO
+	case BINDER_GET_SENDER_INFO: {
+		struct binder_sender_info __user *sender = ubuf;
+		u64 token, ftoken, sender_pid_nr;
+		if (size != sizeof(struct binder_sender_info)) {
+			ret = -EINVAL;
+			goto err;
+		}
+		binder_inner_proc_lock(proc);
+#ifdef CONFIG_ACCESS_TOKENID
+		token = thread->tokens.sender_tokenid;
+		ftoken = thread->tokens.first_tokenid;
+#endif /*CONFIG_ACCESS_TOKENID*/
+		sender_pid_nr = thread->sender_pid_nr;
+		binder_inner_proc_unlock(proc);
+#ifdef CONFIG_ACCESS_TOKENID
+		if (put_user(token, &sender->tokens.sender_tokenid)) {
+			ret = -EFAULT;
+			goto err;
+		}
+		if (put_user(ftoken, &sender->tokens.first_tokenid)) {
+			ret = -EFAULT;
+			goto err;
+		}
+#endif /*CONFIG_ACCESS_TOKENID*/
+		if (put_user(sender_pid_nr, &sender->sender_pid_nr)) {
+			ret = -EFAULT;
+			goto err;
+		}
+		break;
+	}
+#endif /* CONFIG_BINDER_SENDER_INFO */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	default:
 		ret = -EINVAL;
 		goto err;
@@ -5664,7 +6131,11 @@ static int binder_open(struct inode *nodp, struct file *filp)
 	spin_lock_init(&proc->outer_lock);
 	get_task_struct(current->group_leader);
 	proc->tsk = current->group_leader;
+<<<<<<< HEAD
 	eproc->cred = get_cred(filp->f_cred);
+=======
+	proc->cred = get_cred(filp->f_cred);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	INIT_LIST_HEAD(&proc->todo);
 	init_waitqueue_head(&proc->freeze_wait);
 	if (binder_supported_policy(current->policy)) {
@@ -6526,8 +6997,10 @@ const struct file_operations binder_fops = {
 	.open = binder_open,
 	.flush = binder_flush,
 	.release = binder_release,
+	.may_pollfree = true,
 };
 
+<<<<<<< HEAD
 DEFINE_SHOW_ATTRIBUTE(state);
 DEFINE_SHOW_ATTRIBUTE(stats);
 DEFINE_SHOW_ATTRIBUTE(transactions);
@@ -6566,6 +7039,153 @@ const struct binder_debugfs_entry binder_debugfs_entries[] = {
 	},
 	{} /* terminator */
 };
+=======
+#ifdef CONFIG_BINDER_TRANSACTION_PROC_BRIEF
+static void print_binder_transaction_brief_ilocked(
+				struct seq_file *m,
+				const char *prefix, struct binder_transaction *t,
+				u64 timestamp)
+{
+	struct binder_proc *to_proc = NULL;
+	int from_pid = 0;
+	int from_tid = 0;
+	int to_pid = 0;
+	u64 sec;
+	u32 nsec;
+
+	spin_lock(&t->lock);
+	to_proc = t->to_proc;
+	from_pid = t->from ? (t->from->proc ? t->from->proc->pid : 0) : t->async_from_pid;
+	from_tid = t->from ? t->from->pid : t->async_from_tid;
+	to_pid = to_proc ? to_proc->pid : 0;
+	sec = div_u64_rem((timestamp - t->timestamp), 1000000000, &nsec);
+
+	seq_printf(m,
+		   "%s%d:%d to %d:%d code %x wait:%llu.%u s\n",
+		   prefix,
+		   from_pid, from_tid,
+		   to_pid, t->to_thread ? t->to_thread->pid : 0,
+		   t->code,
+		   timestamp > t->timestamp ? sec : 0,
+		   timestamp > t->timestamp ? nsec : 0);
+	spin_unlock(&t->lock);
+}
+
+static void print_binder_work_transaction_nilocked(struct seq_file *m,
+				const char *prefix, struct binder_work *w,
+				u64 timestamp)
+{
+	struct binder_transaction *t = NULL;
+
+	switch (w->type) {
+	case BINDER_WORK_TRANSACTION:
+		t = container_of(w, struct binder_transaction, work);
+		print_binder_transaction_brief_ilocked(m, prefix, t, timestamp);
+		break;
+
+	default:
+		break;
+	}
+}
+
+static void print_binder_transaction_brief(struct seq_file *m,
+				struct binder_proc *proc,
+				u64 timestamp)
+{
+	struct binder_work *w = NULL;
+	struct rb_node *n = NULL;
+	struct binder_node *last_node = NULL;
+	size_t start_pos = m->count;
+	size_t header_pos = m->count;
+
+	/* sync binder / not one way */
+	binder_inner_proc_lock(proc);
+	for (n = rb_first(&proc->threads); n != NULL; n = rb_next(n)) {
+		struct binder_thread *thread = rb_entry(n, struct binder_thread, rb_node);
+		struct binder_transaction *t = thread->transaction_stack;
+		while (t) {
+			if (t->from == thread) {
+				print_binder_transaction_brief_ilocked(m, "\t", t, timestamp);
+				t = t->from_parent;
+			} else if (t->to_thread == thread) {
+				t = t->to_parent;
+			} else {
+				t = NULL;
+			}
+		}
+	}
+
+	/* async binder / one way */
+	for (n = rb_first(&proc->nodes); n != NULL; n = rb_next(n)) {
+		struct binder_node *node = rb_entry(n, struct binder_node, rb_node);
+		/*
+		 * take a temporary reference on the node so it
+		 * survives and isn't removed from the tree
+		 * while we print it.
+		 */
+		binder_inc_node_tmpref_ilocked(node);
+		/* Need to drop inner lock to take node lock */
+		binder_inner_proc_unlock(proc);
+		if (last_node)
+			binder_put_node(last_node);
+		binder_node_inner_lock(node);
+		list_for_each_entry(w, &node->async_todo, entry)
+			print_binder_work_transaction_nilocked(m, "async\t", w, timestamp);
+		binder_node_inner_unlock(node);
+		last_node = node;
+		binder_inner_proc_lock(proc);
+	}
+	binder_inner_proc_unlock(proc);
+
+	if (last_node)
+		binder_put_node(last_node);
+
+	if (m->count == header_pos)
+		m->count = start_pos;
+}
+
+static void print_binder_proc_brief(struct seq_file *m,
+				struct binder_proc *proc)
+{
+	struct binder_thread *thread = NULL;
+	int ready_threads = 0;
+	size_t free_async_space = binder_alloc_get_free_async_space(&proc->alloc);
+
+	seq_printf(m, "%d\t", proc->pid);
+	seq_printf(m, "%s\t", proc->context->name);
+
+	binder_inner_proc_lock(proc);
+	list_for_each_entry(thread, &proc->waiting_threads, waiting_thread_node)
+		ready_threads++;
+
+	seq_printf(m, "%d\t%d\t%d\t%d"
+			"\t%zd\n", proc->requested_threads,
+			proc->requested_threads_started, proc->max_threads,
+			ready_threads,
+			free_async_space);
+	binder_inner_proc_unlock(proc);
+}
+
+static int binder_transaction_proc_show(struct seq_file *m, void *unused)
+{
+	struct binder_proc *proc = NULL;
+	u64 now = 0;
+
+	mutex_lock(&binder_procs_lock);
+	now = binder_clock();
+	hlist_for_each_entry(proc, &binder_procs, proc_node)
+		print_binder_transaction_brief(m, proc, now);
+
+	seq_printf(m, "\npid\tcontext\t\trequest\tstarted\tmax\tready\tfree_async_space\n");
+	hlist_for_each_entry(proc, &binder_procs, proc_node)
+		print_binder_proc_brief(m, proc);
+	mutex_unlock(&binder_procs_lock);
+
+	return 0;
+}
+
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 static int __init init_binder_device(const char *name)
 {
@@ -6624,6 +7244,43 @@ static int __init binder_init(void)
 
 		binder_debugfs_dir_entry_proc = debugfs_create_dir("proc",
 						 binder_debugfs_dir_entry_root);
+<<<<<<< HEAD
+=======
+
+	if (binder_debugfs_dir_entry_root) {
+		debugfs_create_file("state",
+				    0444,
+				    binder_debugfs_dir_entry_root,
+				    NULL,
+				    &binder_state_fops);
+		debugfs_create_file("stats",
+				    0444,
+				    binder_debugfs_dir_entry_root,
+				    NULL,
+				    &binder_stats_fops);
+		debugfs_create_file("transactions",
+				    0444,
+				    binder_debugfs_dir_entry_root,
+				    NULL,
+				    &binder_transactions_fops);
+		debugfs_create_file("transaction_log",
+				    0444,
+				    binder_debugfs_dir_entry_root,
+				    &binder_transaction_log,
+				    &binder_transaction_log_fops);
+		debugfs_create_file("failed_transaction_log",
+				    0444,
+				    binder_debugfs_dir_entry_root,
+				    &binder_transaction_log_failed,
+				    &binder_transaction_log_fops);
+#ifdef CONFIG_BINDER_TRANSACTION_PROC_BRIEF
+		proc_create_data("transaction_proc",
+				 S_IRUGO,
+				 NULL,
+				 &binder_transaction_proc_proc_ops,
+				 NULL);
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	}
 
 	if (!IS_ENABLED(CONFIG_ANDROID_BINDERFS) &&
@@ -6663,6 +7320,7 @@ err_init_binder_device_failed:
 
 err_alloc_device_names_failed:
 	debugfs_remove_recursive(binder_debugfs_dir_entry_root);
+	binder_alloc_shrinker_exit();
 
 	return ret;
 }

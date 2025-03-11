@@ -18,6 +18,7 @@
 #endif
 
 #include <asm/ptrace.h>
+#include <asm/extable.h>
 #include <asm/opcodes-virt.h>
 #include <asm/asm-offsets.h>
 #include <asm/page.h>
@@ -252,10 +253,7 @@
 
 #define USERL(l, x...)				\
 9999:	x;					\
-	.pushsection __ex_table,"a";		\
-	.align	3;				\
-	.long	9999b,l;			\
-	.popsection
+	ex_entry	9999b,l;
 
 #define USER(x...)	USERL(9001f, x)
 
@@ -269,7 +267,7 @@
  */
 #define ALT_UP(instr...)					\
 	.pushsection ".alt.smp.init", "a"			;\
-	.long	9998b						;\
+	.long	9998b - .					;\
 9997:	instr							;\
 	.if . - 9997b == 2					;\
 		nop						;\
@@ -280,7 +278,7 @@
 	.popsection
 #define ALT_UP_B(label)					\
 	.pushsection ".alt.smp.init", "a"			;\
-	.long	9998b						;\
+	.long	9998b - .					;\
 	W(b)	. + (label - 9998b)					;\
 	.popsection
 #else
@@ -389,10 +387,7 @@ THUMB(	orr	\reg , \reg , #PSR_T_BIT	)
 	.error	"Unsupported inc macro argument"
 	.endif
 
-	.pushsection __ex_table,"a"
-	.align	3
-	.long	9999b, \abort
-	.popsection
+	ex_entry	9999b, \abort
 	.endm
 
 	.macro	usracc, instr, reg, ptr, inc, cond, rept, abort
@@ -430,10 +425,7 @@ THUMB(	orr	\reg , \reg , #PSR_T_BIT	)
 	.error	"Unsupported inc macro argument"
 	.endif
 
-	.pushsection __ex_table,"a"
-	.align	3
-	.long	9999b, \abort
-	.popsection
+	ex_entry	9999b, \abort
 	.endr
 	.endm
 
@@ -546,7 +538,7 @@ THUMB(	orr	\reg , \reg , #PSR_T_BIT	)
 	 * mov_l - move a constant value or [relocated] address into a register
 	 */
 	.macro		mov_l, dst:req, imm:req
-	.if		__LINUX_ARM_ARCH__ < 7
+	.if		CONFIG_RELOCATABLE == 1 || __LINUX_ARM_ARCH__ < 7
 	ldr		\dst, =\imm
 	.else
 	movw		\dst, #:lower16:\imm

@@ -290,6 +290,9 @@ config ARCH_HAS_DMA_SET_UNCACHED
 config ARCH_HAS_DMA_CLEAR_UNCACHED
 	bool
 
+config ARCH_HAS_CPU_FINALIZE_INIT
+	bool
+
 # Select if arch init_task must go in the __init_task_data section
 config ARCH_TASK_STRUCT_ON_STACK
 	bool
@@ -643,13 +646,20 @@ config HAS_LTO_CLANG
 	def_bool y
 	# Clang >= 11: https://github.com/ClangBuiltLinux/linux/issues/510
 	depends on CC_IS_CLANG && CLANG_VERSION >= 110000 && LD_IS_LLD
+<<<<<<< HEAD
 	depends on $(success,test $(LLVM) -eq 1)
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	depends on $(success,test $(LLVM_IAS) -eq 1)
 	depends on $(success,$(NM) --help | head -n 1 | grep -qi llvm)
 	depends on $(success,$(AR) --help | head -n 1 | grep -qi llvm)
 	depends on ARCH_SUPPORTS_LTO_CLANG
 	depends on !FTRACE_MCOUNT_USE_RECORDMCOUNT
+<<<<<<< HEAD
 	depends on !KASAN || KASAN_HW_TAGS
+=======
+	depends on !KASAN
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	depends on !GCOV_KERNEL
 	help
 	  The compiler and Kconfig options support building with Clang's
@@ -704,12 +714,39 @@ config LTO_CLANG_THIN
 	  If unsure, say Y.
 endchoice
 
+<<<<<<< HEAD
 config CFI_CLANG
 	bool "Use Clang's Control Flow Integrity (CFI)"
 	depends on LTO_CLANG && KALLSYMS
 	help
 	  This option enables Clang's Control Flow Integrity (CFI), which adds
 	  runtime checking for indirect function calls.
+=======
+config ARCH_SUPPORTS_CFI_CLANG
+	bool
+	help
+	  An architecture should select this option if it can support Clang's
+	  Control-Flow Integrity (CFI) checking.
+
+config CFI_CLANG
+	bool "Use Clang's Control Flow Integrity (CFI)"
+	depends on LTO_CLANG && ARCH_SUPPORTS_CFI_CLANG
+	# Clang >= 12:
+	# - https://bugs.llvm.org/show_bug.cgi?id=46258
+	# - https://bugs.llvm.org/show_bug.cgi?id=47479
+	depends on CLANG_VERSION >= 120000
+	select KALLSYMS
+	help
+	  This option enables Clang’s forward-edge Control Flow Integrity
+	  (CFI) checking, where the compiler injects a runtime check to each
+	  indirect function call to ensure the target is a valid function with
+	  the correct static type. This restricts possible call targets and
+	  makes it more difficult for an attacker to exploit bugs that allow
+	  the modification of stored function pointers. More information can be
+	  found from Clang's documentation:
+
+	    https://clang.llvm.org/docs/ControlFlowIntegrity.html
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 config CFI_CLANG_SHADOW
 	bool "Use CFI shadow to speed up cross-module checks"
@@ -717,15 +754,28 @@ config CFI_CLANG_SHADOW
 	depends on CFI_CLANG && MODULES
 	help
 	  If you select this option, the kernel builds a fast look-up table of
+<<<<<<< HEAD
 	  CFI check functions in loaded modules to reduce overhead.
+=======
+	  CFI check functions in loaded modules to reduce performance overhead.
+
+	  If unsure, say Y.
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 config CFI_PERMISSIVE
 	bool "Use CFI in permissive mode"
 	depends on CFI_CLANG
 	help
 	  When selected, Control Flow Integrity (CFI) violations result in a
+<<<<<<< HEAD
 	  warning instead of a kernel panic. This option is useful for finding
 	  CFI violations during development.
+=======
+	  warning instead of a kernel panic. This option should only be used
+	  for finding indirect call type mismatches during development.
+
+	  If unsure, say N.
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 config HAVE_ARCH_WITHIN_STACK_FRAMES
 	bool

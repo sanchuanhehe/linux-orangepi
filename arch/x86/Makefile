@@ -201,12 +201,15 @@ ifdef CONFIG_SLS
 endif
 
 KBUILD_LDFLAGS += -m elf_$(UTS_MACHINE)
+<<<<<<< HEAD
 
 ifdef CONFIG_LTO_CLANG
 ifeq ($(shell test $(CONFIG_LLD_VERSION) -lt 130000; echo $$?),0)
 KBUILD_LDFLAGS	+= -plugin-opt=-stack-alignment=$(if $(CONFIG_X86_32),4,8)
 endif
 endif
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 ifdef CONFIG_X86_NEED_RELOCS
 LDFLAGS_vmlinux := --emit-relocs --discard-none

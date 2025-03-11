@@ -888,6 +888,7 @@ static int rockchip_usb2phy_power_on(struct phy *phy)
 		goto unlock;
 
 	ret = property_enable(base, &rport->port_cfg->phy_sus, false);
+<<<<<<< HEAD
 	if (ret)
 		goto unlock;
 
@@ -904,6 +905,11 @@ static int rockchip_usb2phy_power_on(struct phy *phy)
 		ret = rockchip_usb2phy_reset(rphy);
 		if (ret)
 			goto unlock;
+=======
+	if (ret) {
+		clk_disable_unprepare(rphy->clk480m);
+		return ret;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	}
 
 	/* waiting for the utmi_clk to become stable */

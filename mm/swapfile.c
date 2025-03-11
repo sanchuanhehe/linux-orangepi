@@ -43,7 +43,11 @@
 #include <asm/tlbflush.h>
 #include <linux/swapops.h>
 #include <linux/swap_cgroup.h>
+<<<<<<< HEAD
 #include <trace/hooks/mm.h>
+=======
+#include <linux/zswapd.h>
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 static bool swap_count_continued(struct swap_info_struct *, pgoff_t,
 				 unsigned char);
@@ -668,6 +672,7 @@ static void __del_from_avail_list(struct swap_info_struct *p)
 {
 	int nid;
 
+	assert_spin_locked(&p->lock);
 	for_each_node(nid)
 		plist_del(&p->avail_lists[nid], &swap_avail_heads[nid]);
 }
@@ -1111,6 +1116,7 @@ start_over:
 			goto check_out;
 		pr_debug("scan_swap_map of si %d failed to find offset\n",
 			si->type);
+		cond_resched();
 
 		spin_lock(&swap_avail_lock);
 nextsi:
@@ -1279,6 +1285,11 @@ static unsigned char __swap_entry_free_locked(struct swap_info_struct *p,
 }
 
 /*
+ * Note that when only holding the PTL, swapoff might succeed immediately
+ * after freeing a swap entry. Therefore, immediately after
+ * __swap_entry_free(), the swap info might become stale and should not
+ * be touched without a prior get_swap_device().
+ *
  * Check whether swap entry is valid in the swap device.  If so,
  * return pointer to swap_info_struct, and keep the swap entry valid
  * via preventing the swap device from being swapoff, until
@@ -1806,13 +1817,19 @@ int free_swap_and_cache(swp_entry_t entry)
 	if (non_swap_entry(entry))
 		return 1;
 
-	p = _swap_info_get(entry);
+	p = get_swap_device(entry);
 	if (p) {
+		if (WARN_ON(data_race(!p->swap_map[swp_offset(entry)]))) {
+			put_swap_device(p);
+			return 0;
+		}
+
 		count = __swap_entry_free(p, entry);
 		if (count == SWAP_HAS_CACHE &&
 		    !swap_page_trans_huge_swapped(p, entry))
 			__try_to_reclaim_swap(p, swp_offset(entry),
 					      TTRS_UNMAPPED | TTRS_FULL);
+		put_swap_device(p);
 	}
 	return p != NULL;
 }
@@ -2629,8 +2646,8 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 		spin_unlock(&swap_lock);
 		goto out_dput;
 	}
-	del_from_avail_list(p);
 	spin_lock(&p->lock);
+	del_from_avail_list(p);
 	if (p->prio < 0) {
 		struct swap_info_struct *si = p;
 		int nid;
@@ -3470,6 +3487,28 @@ void si_swapinfo(struct sysinfo *val)
 	spin_unlock(&swap_lock);
 }
 EXPORT_SYMBOL_GPL(si_swapinfo);
+
+#ifdef CONFIG_HYPERHOLD_ZSWAPD
+bool free_swap_is_low(void)
+{
+	unsigned int type;
+	unsigned long long freeswap = 0;
+	unsigned long nr_to_be_unused = 0;
+
+	spin_lock(&swap_lock);
+	for (type = 0; type < nr_swapfiles; type++) {
+		struct swap_info_struct *si = swap_info[type];
+
+		if ((si->flags & SWP_USED) && !(si->flags & SWP_WRITEOK))
+			nr_to_be_unused += si->inuse_pages;
+	}
+	freeswap = atomic_long_read(&nr_swap_pages) + nr_to_be_unused;
+	spin_unlock(&swap_lock);
+
+	return (freeswap < get_free_swap_threshold());
+}
+EXPORT_SYMBOL(free_swap_is_low);
+#endif
 
 /*
  * Verify that a swap entry is valid and increment its swap map count.

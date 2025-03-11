@@ -364,7 +364,7 @@ trace_raw_output_##call(struct trace_iterator *iter, int flags,		\
 	if (ret != TRACE_TYPE_HANDLED)					\
 		return ret;						\
 									\
-	trace_seq_printf(s, print);					\
+	trace_event_printf(iter, print);				\
 									\
 	return trace_handle_return(s);					\
 }									\
@@ -400,7 +400,11 @@ static struct trace_event_functions trace_event_type_funcs_##call = {	\
 
 #include TRACE_INCLUDE(TRACE_INCLUDE_FILE)
 
+<<<<<<< HEAD
 #define ALIGN_STRUCTFIELD(type) ((int)(offsetof(struct {char a; type b;}, b)))
+=======
+#define ALIGN_STRUCTFIELD(type) ((int)(__alignof__(struct {type b;})))
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 #undef __field_ext
 #define __field_ext(_type, _item, _filter_type) {			\

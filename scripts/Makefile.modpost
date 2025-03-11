@@ -46,8 +46,11 @@ include scripts/Kbuild.include
 # for ld_flags
 include scripts/Makefile.lib
 
+<<<<<<< HEAD
 mixed-build-prefix = $(if $(KBUILD_MIXED_TREE),$(KBUILD_MIXED_TREE)/)
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 MODPOST = scripts/mod/modpost								\
 	$(if $(CONFIG_MODVERSIONS),-m)							\
 	$(if $(CONFIG_MODULE_SRCVERSION_ALL),-a)					\

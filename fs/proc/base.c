@@ -54,6 +54,11 @@
 #include <linux/time.h>
 #include <linux/proc_fs.h>
 #include <linux/stat.h>
+
+#ifdef CONFIG_QOS_CTRL
+#include <linux/sched/qos_ctrl.h>
+#endif
+
 #include <linux/task_io_accounting_ops.h>
 #include <linux/init.h>
 #include <linux/capability.h>
@@ -88,6 +93,10 @@
 #include <linux/user_namespace.h>
 #include <linux/fs_struct.h>
 #include <linux/slab.h>
+#include <linux/sched.h>
+#ifdef CONFIG_SCHED_RTG
+#include <linux/sched/rtg_ctrl.h>
+#endif
 #include <linux/sched/autogroup.h>
 #include <linux/sched/mm.h>
 #include <linux/sched/coredump.h>
@@ -902,18 +911,34 @@ static ssize_t mem_write(struct file *file, const char __user *buf,
 
 loff_t mem_lseek(struct file *file, loff_t offset, int orig)
 {
+	loff_t ret = 0;
+
+	spin_lock(&file->f_lock);
 	switch (orig) {
-	case 0:
-		file->f_pos = offset;
-		break;
-	case 1:
-		file->f_pos += offset;
+	case SEEK_CUR:
+		offset += file->f_pos;
+		/* fall through */
+	case SEEK_SET:
+		/* to avoid userland mistaking f_pos=-9 as -EBADF=-9 */
+		if ((unsigned long long)offset >= -MAX_ERRNO)
+			ret = -EOVERFLOW;
 		break;
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
 	}
-	force_successful_syscall_return();
-	return file->f_pos;
+
+	if (!ret) {
+		if (offset < 0 && !(unsigned_offsets(file))) {
+			ret = -EINVAL;
+		} else {
+			file->f_pos = offset;
+			ret = file->f_pos;
+			force_successful_syscall_return();
+		}
+	}
+
+	spin_unlock(&file->f_lock);
+	return ret;
 }
 
 static int mem_release(struct inode *inode, struct file *file)
@@ -1483,6 +1508,108 @@ static const struct file_operations proc_pid_sched_operations = {
 
 #endif
 
+#ifdef CONFIG_QOS_CTRL
+long proc_qos_ctrl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	return do_qos_ctrl_ioctl(QOS_IOCTL_ABI_AARCH64, file, cmd, arg);
+}
+
+#ifdef CONFIG_COMPAT
+long proc_qos_ctrl_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	return do_qos_ctrl_ioctl(QOS_IOCTL_ABI_ARM32, file, cmd,
+			(unsigned long)(compat_ptr((compat_uptr_t)arg)));
+}
+#endif
+
+int proc_qos_ctrl_open(struct inode *inode, struct file *filp)
+{
+	return 0;
+}
+
+static const struct file_operations proc_qos_ctrl_operations = {
+	.open   = proc_qos_ctrl_open,
+	.unlocked_ioctl = proc_qos_ctrl_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = proc_qos_ctrl_compat_ioctl,
+#endif
+};
+#endif
+
+#ifdef CONFIG_SCHED_RTG
+static const struct file_operations proc_rtg_operations = {
+	.open		= proc_rtg_open,
+	.unlocked_ioctl	= proc_rtg_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl	= proc_rtg_compat_ioctl,
+#endif
+};
+#endif
+
+#ifdef CONFIG_SCHED_RTG_DEBUG
+static int sched_group_id_show(struct seq_file *m, void *v)
+{
+	struct inode *inode = m->private;
+	struct task_struct *p;
+
+	p = get_proc_task(inode);
+	if (!p)
+		return -ESRCH;
+
+	seq_printf(m, "%d\n", sched_get_group_id(p));
+
+	put_task_struct(p);
+
+	return 0;
+}
+
+static ssize_t
+sched_group_id_write(struct file *file, const char __user *buf,
+	    size_t count, loff_t *offset)
+{
+	struct inode *inode = file_inode(file);
+	struct task_struct *p;
+	char buffer[PROC_NUMBUF];
+	int group_id, err;
+
+	memset(buffer, 0, sizeof(buffer));
+	if (count > sizeof(buffer) - 1)
+		count = sizeof(buffer) - 1;
+	if (copy_from_user(buffer, buf, count)) {
+		err = -EFAULT;
+		goto out;
+	}
+
+	err = kstrtoint(strstrip(buffer), 0, &group_id);
+	if (err)
+		goto out;
+
+	p = get_proc_task(inode);
+	if (!p)
+		return -ESRCH;
+
+	err = sched_set_group_id(p, group_id);
+
+	put_task_struct(p);
+
+out:
+	return err < 0 ? err : count;
+}
+
+static int sched_group_id_open(struct inode *inode, struct file *filp)
+{
+	return single_open(filp, sched_group_id_show, inode);
+}
+
+static const struct file_operations proc_pid_sched_group_id_operations = {
+	.open		= sched_group_id_open,
+	.read		= seq_read,
+	.write		= sched_group_id_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+#endif	/* CONFIG_SCHED_RTG_DEBUG */
+
 #ifdef CONFIG_SCHED_AUTOGROUP
 /*
  * Print out autogroup related information:
@@ -1557,6 +1684,70 @@ static const struct file_operations proc_pid_sched_autogroup_operations = {
 };
 
 #endif /* CONFIG_SCHED_AUTOGROUP */
+
+#ifdef CONFIG_SCHED_WALT
+static int sched_init_task_load_show(struct seq_file *m, void *v)
+{
+	struct inode *inode = m->private;
+	struct task_struct *p;
+
+	p = get_proc_task(inode);
+	if (!p)
+		return -ESRCH;
+
+	seq_printf(m, "%d\n", sched_get_init_task_load(p));
+
+	put_task_struct(p);
+
+	return 0;
+}
+
+static ssize_t
+sched_init_task_load_write(struct file *file, const char __user *buf,
+	    size_t count, loff_t *offset)
+{
+	struct inode *inode = file_inode(file);
+	struct task_struct *p;
+	char buffer[PROC_NUMBUF];
+	int init_task_load, err;
+
+	memset(buffer, 0, sizeof(buffer));
+	if (count > sizeof(buffer) - 1)
+		count = sizeof(buffer) - 1;
+	if (copy_from_user(buffer, buf, count)) {
+		err = -EFAULT;
+		goto out;
+	}
+
+	err = kstrtoint(strstrip(buffer), 0, &init_task_load);
+	if (err)
+		goto out;
+
+	p = get_proc_task(inode);
+	if (!p)
+		return -ESRCH;
+
+	err = sched_set_init_task_load(p, init_task_load);
+
+	put_task_struct(p);
+
+out:
+	return err < 0 ? err : count;
+}
+
+static int sched_init_task_load_open(struct inode *inode, struct file *filp)
+{
+	return single_open(filp, sched_init_task_load_show, inode);
+}
+
+static const struct file_operations proc_pid_sched_init_task_load_operations = {
+	.open		= sched_init_task_load_open,
+	.read		= seq_read,
+	.write		= sched_init_task_load_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+#endif	/* CONFIG_SCHED_WALT */
 
 #ifdef CONFIG_TIME_NS
 static int timens_offsets_show(struct seq_file *m, void *v)
@@ -1882,7 +2073,7 @@ void proc_pid_evict_inode(struct proc_inode *ei)
 	put_pid(pid);
 }
 
-struct inode *proc_pid_make_inode(struct super_block * sb,
+struct inode *proc_pid_make_inode(struct super_block *sb,
 				  struct task_struct *task, umode_t mode)
 {
 	struct inode * inode;
@@ -1911,11 +2102,6 @@ struct inode *proc_pid_make_inode(struct super_block * sb,
 
 	/* Let the pid remember us for quick removal */
 	ei->pid = pid;
-	if (S_ISDIR(mode)) {
-		spin_lock(&pid->lock);
-		hlist_add_head_rcu(&ei->sibling_inodes, &pid->inodes);
-		spin_unlock(&pid->lock);
-	}
 
 	task_dump_owner(task, 0, &inode->i_uid, &inode->i_gid);
 	security_task_to_inode(task, inode);
@@ -1926,6 +2112,39 @@ out:
 out_unlock:
 	iput(inode);
 	return NULL;
+}
+
+/*
+ * Generating an inode and adding it into @pid->inodes, so that task will
+ * invalidate inode's dentry before being released.
+ *
+ * This helper is used for creating dir-type entries under '/proc' and
+ * '/proc/<tgid>/task'. Other entries(eg. fd, stat) under '/proc/<tgid>'
+ * can be released by invalidating '/proc/<tgid>' dentry.
+ * In theory, dentries under '/proc/<tgid>/task' can also be released by
+ * invalidating '/proc/<tgid>' dentry, we reserve it to handle single
+ * thread exiting situation: Any one of threads should invalidate its
+ * '/proc/<tgid>/task/<pid>' dentry before released.
+ */
+static struct inode *proc_pid_make_base_inode(struct super_block *sb,
+				struct task_struct *task, umode_t mode)
+{
+	struct inode *inode;
+	struct proc_inode *ei;
+	struct pid *pid;
+
+	inode = proc_pid_make_inode(sb, task, mode);
+	if (!inode)
+		return NULL;
+
+	/* Let proc_flush_pid find this directory inode */
+	ei = PROC_I(inode);
+	pid = ei->pid;
+	spin_lock(&pid->lock);
+	hlist_add_head_rcu(&ei->sibling_inodes, &pid->inodes);
+	spin_unlock(&pid->lock);
+
+	return inode;
 }
 
 int pid_getattr(const struct path *path, struct kstat *stat,
@@ -3164,6 +3383,15 @@ static int proc_stack_depth(struct seq_file *m, struct pid_namespace *ns,
 }
 #endif /* CONFIG_STACKLEAK_METRICS */
 
+#ifdef CONFIG_ACCESS_TOKENID
+static int proc_token_operations(struct seq_file *m, struct pid_namespace *ns,
+				 struct pid *pid, struct task_struct *task)
+{
+	seq_printf(m, "%#llx %#llx\n", task->token, task->ftoken);
+	return 0;
+}
+#endif /* CONFIG_ACCESS_TOKENID */
+
 /*
  * Thread groups
  */
@@ -3184,6 +3412,9 @@ static const struct pid_entry tgid_base_stuff[] = {
 	ONE("status",     S_IRUGO, proc_pid_status),
 	ONE("personality", S_IRUSR, proc_pid_personality),
 	ONE("limits",	  S_IRUGO, proc_pid_limits),
+#ifdef CONFIG_SCHED_WALT
+	REG("sched_init_task_load", 00644, proc_pid_sched_init_task_load_operations),
+#endif
 #ifdef CONFIG_SCHED_DEBUG
 	REG("sched",      S_IRUGO|S_IWUSR, proc_pid_sched_operations),
 #endif
@@ -3192,6 +3423,10 @@ static const struct pid_entry tgid_base_stuff[] = {
 #endif
 #ifdef CONFIG_TIME_NS
 	REG("timens_offsets",  S_IRUGO|S_IWUSR, proc_timens_offsets_operations),
+#endif
+#ifdef CONFIG_RSS_THRESHOLD
+	ONE("rss", S_IRUGO, proc_pid_rss),
+	REG("rss_threshold", S_IRUGO|S_IWUSR, proc_pid_rss_threshold_operations),
 #endif
 	REG("comm",      S_IRUGO|S_IWUSR, proc_pid_set_comm_operations),
 #ifdef CONFIG_HAVE_ARCH_TRACEHOOK
@@ -3280,6 +3515,18 @@ static const struct pid_entry tgid_base_stuff[] = {
 #ifdef CONFIG_PROC_PID_ARCH_STATUS
 	ONE("arch_status", S_IRUGO, proc_pid_arch_status),
 #endif
+#ifdef CONFIG_ACCESS_TOKENID
+	ONE("tokenid", S_IRUSR, proc_token_operations),
+#endif
+#ifdef CONFIG_SCHED_RTG
+	REG("sched_rtg_ctrl", S_IRUGO|S_IWUGO, proc_rtg_operations),
+#endif
+#ifdef CONFIG_SCHED_RTG_DEBUG
+	REG("sched_group_id", S_IRUGO|S_IWUGO, proc_pid_sched_group_id_operations),
+#endif
+#ifdef CONFIG_SECURITY_XPM
+	REG("xpm_region", S_IRUGO, proc_xpm_region_operations),
+#endif
 };
 
 static int proc_tgid_base_readdir(struct file *file, struct dir_context *ctx)
@@ -3345,7 +3592,8 @@ static struct dentry *proc_pid_instantiate(struct dentry * dentry,
 {
 	struct inode *inode;
 
-	inode = proc_pid_make_inode(dentry->d_sb, task, S_IFDIR | S_IRUGO | S_IXUGO);
+	inode = proc_pid_make_base_inode(dentry->d_sb, task,
+					 S_IFDIR | S_IRUGO | S_IXUGO);
 	if (!inode)
 		return ERR_PTR(-ENOENT);
 
@@ -3510,7 +3758,8 @@ static int proc_tid_comm_permission(struct inode *inode, int mask)
 }
 
 static const struct inode_operations proc_tid_comm_inode_operations = {
-		.permission = proc_tid_comm_permission,
+		.setattr	= proc_setattr,
+		.permission	= proc_tid_comm_permission,
 };
 
 /*
@@ -3609,8 +3858,22 @@ static const struct pid_entry tid_base_stuff[] = {
 #ifdef CONFIG_PROC_PID_ARCH_STATUS
 	ONE("arch_status", S_IRUGO, proc_pid_arch_status),
 #endif
+<<<<<<< HEAD
 #ifdef CONFIG_CPU_FREQ_TIMES
 	ONE("time_in_state", 0444, proc_time_in_state_show),
+=======
+#ifdef CONFIG_ACCESS_TOKENID
+	ONE("tokenid", S_IRUSR, proc_token_operations),
+#endif
+#ifdef CONFIG_QOS_CTRL
+	REG("sched_qos_ctrl", S_IRUGO|S_IWUGO, proc_qos_ctrl_operations),
+#endif
+#ifdef CONFIG_SCHED_RTG_DEBUG
+	REG("sched_group_id", S_IRUGO|S_IWUGO, proc_pid_sched_group_id_operations),
+#endif
+#ifdef CONFIG_SECURITY_XPM
+	REG("xpm_region", S_IRUGO, proc_xpm_region_operations),
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #endif
 };
 
@@ -3643,7 +3906,8 @@ static struct dentry *proc_task_instantiate(struct dentry *dentry,
 	struct task_struct *task, const void *ptr)
 {
 	struct inode *inode;
-	inode = proc_pid_make_inode(dentry->d_sb, task, S_IFDIR | S_IRUGO | S_IXUGO);
+	inode = proc_pid_make_base_inode(dentry->d_sb, task,
+					 S_IFDIR | S_IRUGO | S_IXUGO);
 	if (!inode)
 		return ERR_PTR(-ENOENT);
 

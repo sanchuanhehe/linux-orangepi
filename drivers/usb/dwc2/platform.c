@@ -121,6 +121,7 @@ static int dwc2_get_dr_mode(struct dwc2_hsotg *hsotg)
 	return 0;
 }
 
+<<<<<<< HEAD
 static void __dwc2_disable_regulators(void *data)
 {
 	struct dwc2_hsotg *hsotg = data;
@@ -196,6 +197,8 @@ int dwc2_lowlevel_phy_disable(struct dwc2_hsotg *hsotg)
 	return ret;
 }
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 static int __dwc2_lowlevel_hw_enable(struct dwc2_hsotg *hsotg)
 {
 	struct platform_device *pdev = to_platform_device(hsotg->dev);
@@ -206,6 +209,7 @@ static int __dwc2_lowlevel_hw_enable(struct dwc2_hsotg *hsotg)
 	if (ret)
 		return ret;
 
+<<<<<<< HEAD
 	ret = devm_add_action_or_reset(&pdev->dev,
 				       __dwc2_disable_regulators, hsotg);
 	if (ret)
@@ -217,6 +221,23 @@ static int __dwc2_lowlevel_hw_enable(struct dwc2_hsotg *hsotg)
 
 	if (!hsotg->ll_phy_enabled)
 		ret = dwc2_lowlevel_phy_enable(hsotg);
+=======
+	if (hsotg->clk) {
+		ret = clk_prepare_enable(hsotg->clk);
+		if (ret)
+			return ret;
+	}
+
+	if (hsotg->uphy) {
+		ret = usb_phy_init(hsotg->uphy);
+	} else if (hsotg->plat && hsotg->plat->phy_init) {
+		ret = hsotg->plat->phy_init(pdev, hsotg->plat->phy_type);
+	} else {
+		ret = phy_init(hsotg->phy);
+		if (ret == 0)
+			ret = phy_power_on(hsotg->phy);
+	}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	return ret;
 }
@@ -241,15 +262,27 @@ static int __dwc2_lowlevel_hw_disable(struct dwc2_hsotg *hsotg)
 {
 	int ret = 0;
 
+<<<<<<< HEAD
 	if (hsotg->ll_phy_enabled)
 		ret = dwc2_lowlevel_phy_disable(hsotg);
 
+=======
+	if (hsotg->uphy) {
+		usb_phy_shutdown(hsotg->uphy);
+	} else if (hsotg->plat && hsotg->plat->phy_exit) {
+		ret = hsotg->plat->phy_exit(pdev, hsotg->plat->phy_type);
+	} else {
+		ret = phy_power_off(hsotg->phy);
+		if (ret == 0)
+			ret = phy_exit(hsotg->phy);
+	}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (ret)
 		return ret;
 
 	clk_bulk_disable_unprepare(hsotg->num_clks, hsotg->clks);
 
-	return 0;
+	return regulator_bulk_disable(ARRAY_SIZE(hsotg->supplies), hsotg->supplies);
 }
 
 /**
@@ -697,9 +730,13 @@ error_init:
 	if (hsotg->params.activate_stm_id_vb_detection)
 		regulator_disable(hsotg->usb33d);
 error:
+<<<<<<< HEAD
 	pm_runtime_put_sync(hsotg->dev);
 	pm_runtime_disable(hsotg->dev);
 	if (hsotg->dr_mode != USB_DR_MODE_PERIPHERAL)
+=======
+	if (hsotg->ll_hw_enabled)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		dwc2_lowlevel_hw_disable(hsotg);
 	return retval;
 }

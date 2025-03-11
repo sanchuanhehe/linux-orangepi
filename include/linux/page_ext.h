@@ -86,6 +86,10 @@ static inline void page_ext_init_flatmem_late(void)
 {
 }
 
+static inline void page_ext_init_flatmem_late(void)
+{
+}
+
 static inline void page_ext_init_flatmem(void)
 {
 }

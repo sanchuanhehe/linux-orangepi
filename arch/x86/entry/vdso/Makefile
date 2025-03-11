@@ -90,7 +90,11 @@ ifneq ($(RETPOLINE_VDSO_CFLAGS),)
 endif
 endif
 
+<<<<<<< HEAD
 $(vobjs): KBUILD_CFLAGS := $(filter-out $(CC_FLAGS_LTO) $(GCC_PLUGINS_CFLAGS) $(RETPOLINE_CFLAGS),$(KBUILD_CFLAGS)) $(CFL)
+=======
+$(vobjs): KBUILD_CFLAGS := $(filter-out $(GCC_PLUGINS_CFLAGS) $(RETPOLINE_CFLAGS),$(KBUILD_CFLAGS)) $(CFL)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 $(vobjs): KBUILD_AFLAGS += -DBUILD_VDSO
 
 #

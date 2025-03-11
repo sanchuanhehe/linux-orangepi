@@ -1540,7 +1540,11 @@ static bool svdm_consume_svids(struct tcpm_port *port, const u32 *p, int cnt)
 	 * 0x0000 in the last VDO, so we need to break the Discover SVIDs
 	 * request and return false here.
 	 */
+<<<<<<< HEAD
 	return cnt == 7 ? true : false;
+=======
+	return cnt == 7;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 abort:
 	tcpm_log(port, "SVID_DISCOVERY_MAX(%d) too low!", SVID_DISCOVERY_MAX);
 	return false;
@@ -1901,7 +1905,8 @@ static void tcpm_handle_vdm_request(struct tcpm_port *port,
 			}
 			break;
 		case ADEV_ATTENTION:
-			typec_altmode_attention(adev, p[1]);
+			if (typec_altmode_attention(adev, p[1]))
+				tcpm_log(port, "typec_altmode_attention no port partner altmode");
 			break;
 		}
 	}
@@ -4199,10 +4204,13 @@ static void run_state_machine(struct tcpm_port *port)
 				       tcpm_try_src(port) ? SRC_TRY
 							  : SNK_ATTACHED,
 				       0);
+<<<<<<< HEAD
 			port->debouncing = false;
 		} else {
 			port->debouncing = false;
 		}
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		break;
 	case SRC_TRY:
 		port->try_src_count++;
@@ -5288,7 +5296,10 @@ static void _tcpm_pd_vbus_off(struct tcpm_port *port)
 		break;
 	case SNK_ATTACH_WAIT:
 	case SNK_DEBOUNCED:
+<<<<<<< HEAD
 		port->debouncing = false;
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		/* Do nothing, as TCPM is still waiting for vbus to reaach VSAFE5V to connect */
 		break;
 

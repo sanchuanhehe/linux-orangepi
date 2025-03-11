@@ -63,6 +63,53 @@ config SPARSEMEM_MANUAL
 
 endchoice
 
+config MEMORY_MONITOR
+	bool "ENABLE MEMORY_MONITOR"
+	depends on PROC_FS
+	default n
+	help
+		MEMORY_MONITOR is a monitor of some memory reclaim method.
+		Now, kswapd wake up monitor use it.
+
+config HYPERHOLD_FILE_LRU
+	bool "Enable HyperHold FILE LRU"
+	depends on HYPERHOLD && MEMCG
+	select HYPERHOLD_MEMCG
+	default n
+	help
+	  File-LRU is a mechanism that put file page in global lru list,
+	  and anon page in memcg lru list(if MEMCG is enable), what's
+	  more, recliam of anonymous pages and file page are separated.
+
+config HYPERHOLD_MEMCG
+	bool "Enable Memcg Management in HyperHold"
+	depends on HYPERHOLD && MEMCG
+	help
+	  Add more attributes in memory cgroup, these attribute is used
+	  to show information, shrink memory, swapin page and so on.
+
+config HYPERHOLD_ZSWAPD
+	bool "Enable zswapd thread to reclaim anon pages in background"
+	depends on HYPERHOLD && ZRAM
+	default n
+	help
+	  zswapd is a kernel thread that reclaim anonymous pages in the
+	  background. When the use of swap pages reaches the watermark
+	  and the refault of anonymous pages is high, the content of
+	  zram will exchanged to eswap by a certain percentage.
+
+config PAGE_TRACING
+	bool "Enable Page Tracing"
+	default n
+	help
+	  This option enables page tracing.
+
+config RECLAIM_ACCT
+	bool "Memory reclaim delay accounting"
+	default n
+	help
+	  Memory reclaim delay accounting. Never use it as a kernel module.
+
 config DISCONTIGMEM
 	def_bool y
 	depends on (!SELECT_MEMORY_MODEL && ARCH_DISCONTIGMEM_ENABLE) || DISCONTIGMEM_MANUAL
@@ -127,6 +174,9 @@ config HAVE_MEMBLOCK_PHYS_MAP
 
 config HAVE_FAST_GUP
 	depends on MMU
+	bool
+
+config HOLES_IN_ZONE
 	bool
 
 # Don't discard allocated memory used to track "memory" and "reserved" memblocks
@@ -548,6 +598,16 @@ config CMA_AREAS
 
 	  If unsure, leave the default value "7" in UMA and "19" in NUMA.
 
+config CMA_REUSE
+	bool "CMA reuse feature"
+	depends on CMA
+	help
+	  If enabled, it will add MIGRATE_CMA to pcp lists and movable
+	  allocations with __GFP_CMA flag will use cma areas prior to
+	  movable areas.
+
+	  It improves the utilization ratio of cma areas.
+
 config MEM_SOFT_DIRTY
 	bool "Track memory changes"
 	depends on CHECKPOINT_RESTORE && HAVE_ARCH_SOFT_DIRTY && PROC_FS
@@ -912,6 +972,77 @@ config ARCH_HAS_HUGEPD
 config MAPPING_DIRTY_HELPERS
         bool
 
+<<<<<<< HEAD
 source "mm/damon/Kconfig"
 
+=======
+config ANON_VMA_NAME
+	bool "Anonymous VMA name support"
+	depends on PROC_FS && ADVISE_SYSCALLS && MMU
+
+	help
+	  Allow naming anonymous virtual memory areas.
+
+	  This feature allows assigning names to virtual memory areas. Assigned
+	  names can be later retrieved from /proc/pid/maps and /proc/pid/smaps
+	  and help identifying individual anonymous memory areas.
+	  Assigning a name to anonymous virtual memory area might prevent that
+	  area from being merged with adjacent virtual memory areas due to the
+	  difference in their name.
+#
+# For lmkd to trigger in-kernel lowmem info
+#
+config LOWMEM
+        bool "Low Memory Killer"
+	default n
+	help
+	  Enables lowmem killer parameter tuning
+
+config LMKD_DBG
+	bool "Low Memory Killer Debug"
+	default n
+	help
+	  print processes info when lmk happen per several seconds
+#
+# Show the process ashmem for debug
+#
+config MEMTRACE_ASHMEM
+	bool "Ashmem Process Info Show"
+	depends on ASHMEM
+	default n
+	help
+	  Enable the Ashmem Process Info Show
+
+#
+# Use rss_threshold to monitoring RSS
+#
+config RSS_THRESHOLD
+	bool "Enable /proc/<pid>/rss and /proc/<pid>/rss_threshold to monitoring RSS"
+	default n
+	depends on PROC_FS && MEMCG
+	help
+	  Set a threshold to monitoring RSS in per pid
+
+config MEM_PURGEABLE
+	bool "Purgeable memory feature"
+	default n
+	depends on 64BIT
+	select ARCH_USES_HIGH_VMA_FLAGS
+	help
+	  Support purgeable pages for process
+
+config MEM_PURGEABLE_DEBUG
+	bool "Purgeable memory debug"
+	default n
+	depends on MEM_PURGEABLE
+	help
+	  Debug info for purgeable memory
+
+config PURGEABLE_ASHMEM
+	bool "Purgeable memory feature for ashmem"
+	default n
+	depends on MEM_PURGEABLE
+	help
+	  Support purgeable ashmem for process
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 endmenu

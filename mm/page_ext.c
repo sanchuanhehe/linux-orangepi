@@ -128,6 +128,7 @@ static inline struct page_ext *get_entry(void *base, unsigned long index)
 	return base + page_ext_size * index;
 }
 
+<<<<<<< HEAD
 /**
  * page_ext_get() - Get the extended information for a page.
  * @page: The page we're interested in.
@@ -170,6 +171,8 @@ void page_ext_put(struct page_ext *page_ext)
 
 	rcu_read_unlock();
 }
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #ifndef CONFIG_SPARSEMEM
 
 

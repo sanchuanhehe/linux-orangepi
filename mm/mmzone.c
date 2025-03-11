@@ -72,7 +72,10 @@ struct zoneref *__next_zones_zonelist(struct zoneref *z,
 
 	return z;
 }
+<<<<<<< HEAD
 EXPORT_SYMBOL_GPL(__next_zones_zonelist);
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 void lruvec_init(struct lruvec *lruvec)
 {

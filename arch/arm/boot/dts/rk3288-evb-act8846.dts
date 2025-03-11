@@ -70,7 +70,11 @@
 		vin-supply = <&vcc_sys>;
 	};
 
+<<<<<<< HEAD
 	hym8563: rtc@51 {
+=======
+	rtc@51 {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		compatible = "haoyu,hym8563";
 		reg = <0x51>;
 

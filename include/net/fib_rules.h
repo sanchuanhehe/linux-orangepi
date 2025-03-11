@@ -69,6 +69,7 @@ struct fib_rules_ops {
 	int			(*action)(struct fib_rule *,
 					  struct flowi *, int,
 					  struct fib_lookup_arg *);
+<<<<<<< HEAD
 	/* __GENKSYMS__ hack to preserve the abi change that happened in
 	 * cdef485217d3 ("ipv6: fix memory leak in fib6_rule_suppress")
 	 */
@@ -77,6 +78,9 @@ struct fib_rules_ops {
 #else
 	bool			(*suppress)(struct fib_rule *, int,
 #endif
+=======
+	bool			(*suppress)(struct fib_rule *, int,
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 					    struct fib_lookup_arg *);
 	int			(*match)(struct fib_rule *,
 					 struct flowi *, int);

@@ -11,6 +11,7 @@
 #include <linux/bio.h>
 #include <linux/blktrace_api.h>
 #include <linux/blk-cgroup.h>
+#include <linux/delay.h>
 #include "blk.h"
 #include "blk-cgroup-rwstat.h"
 
@@ -1409,6 +1410,7 @@ static void tg_conf_updated(struct throtl_grp *tg, bool global)
 		   tg_bps_limit(tg, READ), tg_bps_limit(tg, WRITE),
 		   tg_iops_limit(tg, READ), tg_iops_limit(tg, WRITE));
 
+	rcu_read_lock();
 	/*
 	 * Update has_rules[] flags for the updated tg's subtree.  A tg is
 	 * considered to have rules if either the tg itself or any of its
@@ -1436,6 +1438,7 @@ static void tg_conf_updated(struct throtl_grp *tg, bool global)
 		this_tg->latency_target = max(this_tg->latency_target,
 				parent_tg->latency_target);
 	}
+	rcu_read_unlock();
 
 	/*
 	 * We're already holding queue_lock and know @tg is valid.  Let's
@@ -1454,6 +1457,31 @@ static void tg_conf_updated(struct throtl_grp *tg, bool global)
 	}
 }
 
+static inline int throtl_check_init_done(struct request_queue *q)
+{
+	if (test_bit(QUEUE_FLAG_THROTL_INIT_DONE, &q->queue_flags))
+		return 0;
+
+	return blk_queue_dying(q) ? -ENODEV : -EBUSY;
+}
+
+/*
+ * If throtl_check_init_done() return -EBUSY, we should retry after a short
+ * msleep(), since that throttle init will be completed in blk_register_queue()
+ * soon.
+ */
+static inline int throtl_restart_syscall_when_busy(int errno)
+{
+	int ret = errno;
+
+	if (ret == -EBUSY) {
+		msleep(10);
+		ret = restart_syscall();
+	}
+
+	return ret;
+}
+
 static ssize_t tg_set_conf(struct kernfs_open_file *of,
 			   char *buf, size_t nbytes, loff_t off, bool is_u64)
 {
@@ -1466,6 +1494,10 @@ static ssize_t tg_set_conf(struct kernfs_open_file *of,
 	ret = blkg_conf_prep(blkcg, &blkcg_policy_throtl, buf, &ctx);
 	if (ret)
 		return ret;
+
+	ret = throtl_check_init_done(ctx.disk->queue);
+	if (ret)
+		goto out_finish;
 
 	ret = -EINVAL;
 	if (sscanf(ctx.body, "%llu", &v) != 1)
@@ -1484,6 +1516,7 @@ static ssize_t tg_set_conf(struct kernfs_open_file *of,
 	ret = 0;
 out_finish:
 	blkg_conf_finish(&ctx);
+	ret = throtl_restart_syscall_when_busy(ret);
 	return ret ?: nbytes;
 }
 
@@ -1659,8 +1692,11 @@ static ssize_t tg_set_limit(struct kernfs_open_file *of,
 	if (ret)
 		return ret;
 
-	tg = blkg_to_tg(ctx.blkg);
+	ret = throtl_check_init_done(ctx.disk->queue);
+	if (ret)
+		goto out_finish;
 
+	tg = blkg_to_tg(ctx.blkg);
 	v[0] = tg->bps_conf[READ][index];
 	v[1] = tg->bps_conf[WRITE][index];
 	v[2] = tg->iops_conf[READ][index];
@@ -1756,6 +1792,7 @@ static ssize_t tg_set_limit(struct kernfs_open_file *of,
 	ret = 0;
 out_finish:
 	blkg_conf_finish(&ctx);
+	ret = throtl_restart_syscall_when_busy(ret);
 	return ret ?: nbytes;
 }
 

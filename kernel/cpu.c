@@ -35,7 +35,10 @@
 #include <linux/percpu-rwsem.h>
 #include <linux/cpuset.h>
 #include <linux/random.h>
+<<<<<<< HEAD
 #include <uapi/linux/sched/types.h>
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 #include <trace/events/power.h>
 #define CREATE_TRACE_POINTS
@@ -1067,6 +1070,11 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen,
 	if (!cpu_present(cpu))
 		return -EINVAL;
 
+#ifdef CONFIG_CPU_ISOLATION_OPT
+	if (!tasks_frozen && !cpu_isolated(cpu) && num_online_uniso_cpus() == 1)
+		return -EBUSY;
+#endif
+
 	cpus_write_lock();
 
 	cpuhp_tasks_frozen = tasks_frozen;
@@ -1899,6 +1907,11 @@ static struct cpuhp_step cpuhp_hp_states[] = {
 		.startup.single		= random_and_perf_prepare_fusion,
 		.teardown.single	= perf_event_exit_cpu,
 	},
+	[CPUHP_RANDOM_PREPARE] = {
+		.name			= "random:prepare",
+		.startup.single		= random_prepare_cpu,
+		.teardown.single	= NULL,
+	},
 	[CPUHP_WORKQUEUE_PREP] = {
 		.name			= "workqueue:prepare",
 		.startup.single		= workqueue_prepare_cpu,
@@ -2014,6 +2027,11 @@ static struct cpuhp_step cpuhp_hp_states[] = {
 		.name			= "workqueue:online",
 		.startup.single		= random_and_workqueue_online_fusion,
 		.teardown.single	= workqueue_offline_cpu,
+	},
+	[CPUHP_AP_RANDOM_ONLINE] = {
+		.name			= "random:online",
+		.startup.single		= random_online_cpu,
+		.teardown.single	= NULL,
 	},
 	[CPUHP_AP_RCUTREE_ONLINE] = {
 		.name			= "RCU/tree:online",
@@ -2538,8 +2556,10 @@ static ssize_t write_cpuhp_target(struct device *dev,
 
 	if (st->state < target)
 		ret = cpu_up(dev->id, target);
-	else
+	else if (st->state > target)
 		ret = cpu_down(dev->id, target);
+	else if (WARN_ON(st->target != target))
+		st->target = target;
 out:
 	unlock_device_hotplug();
 	return ret ? ret : count;
@@ -2820,6 +2840,11 @@ EXPORT_SYMBOL(__cpu_present_mask);
 struct cpumask __cpu_active_mask __read_mostly;
 EXPORT_SYMBOL(__cpu_active_mask);
 
+#ifdef CONFIG_CPU_ISOLATION_OPT
+struct cpumask __cpu_isolated_mask __read_mostly;
+EXPORT_SYMBOL(__cpu_isolated_mask);
+#endif
+
 atomic_t __num_online_cpus __read_mostly;
 EXPORT_SYMBOL(__num_online_cpus);
 
@@ -2837,6 +2862,13 @@ void init_cpu_online(const struct cpumask *src)
 {
 	cpumask_copy(&__cpu_online_mask, src);
 }
+
+#ifdef CONFIG_CPU_ISOLATION_OPT
+void init_cpu_isolated(const struct cpumask *src)
+{
+	cpumask_copy(&__cpu_isolated_mask, src);
+}
+#endif
 
 void set_cpu_online(unsigned int cpu, bool online)
 {

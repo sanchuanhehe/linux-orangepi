@@ -47,6 +47,18 @@ config CLANG_VERSION
 	int
 	default $(shell,$(srctree)/scripts/clang-version.sh $(CC))
 
+config AS_IS_GNU
+	def_bool $(success,test "$(as-name)" = GNU)
+
+config AS_IS_LLVM
+	def_bool $(success,test "$(as-name)" = LLVM)
+
+config AS_VERSION
+	int
+	# Use clang version if this is the integrated assembler
+	default CLANG_VERSION if AS_IS_LLVM
+	default $(as-version)
+
 config LLD_VERSION
 	int
 	default $(shell,$(srctree)/scripts/lld-version.sh $(LD))
@@ -545,6 +557,15 @@ config SCHED_THERMAL_PRESSURE
 	  This requires the architecture to implement
 	  arch_set_thermal_pressure() and arch_get_thermal_pressure().
 
+config SCHED_WALT
+	bool "Support window based load tracking"
+	depends on SMP
+	help
+	This feature will allow the scheduler to maintain a tunable window
+	based set of metrics for tasks and runqueues. These metrics can be
+	used to guide task placement as well as task frequency requirements
+	for cpufreq governors.
+
 config BSD_PROCESS_ACCT
 	bool "BSD Process Accounting"
 	depends on MULTIUSER
@@ -667,6 +688,32 @@ config CPU_ISOLATION
 	  the "isolcpus=" boot parameter.
 
 	  Say Y if unsure.
+
+config SCHED_RUNNING_AVG
+	bool "per-rq and per-cluster running average statistics"
+	default n
+
+config CPU_ISOLATION_OPT
+	bool "CPU isolation optimization"
+	depends on SMP
+	default n
+	help
+	  This option enables cpu isolation optimization, which allows
+	  to isolate cpu dynamically. The isolated cpu will be unavailable
+	  to scheduler and load balancer, and all its non-pinned timers,
+	  IRQs and tasks will be migrated to other cpus, only pinned
+	  kthread and IRQS are still allowed to run, this achieves
+	  similar effect as hotplug but at lower latency cost.
+
+config SCHED_CORE_CTRL
+	bool "Core control"
+	depends on CPU_ISOLATION_OPT
+	select SCHED_RUNNING_AVG
+	default n
+	help
+	  This option enables the core control functionality in
+	  the scheduler. Core control automatically isolate and
+	  unisolate cores based on cpu load and utilization.
 
 source "kernel/rcu/Kconfig"
 
@@ -841,6 +888,35 @@ config UCLAMP_BUCKETS_COUNT
 	  precision.
 
 	  If in doubt, use the default value.
+
+config SCHED_LATENCY_NICE
+	bool "Enable latency feature for FAIR tasks"
+	default n
+	help
+	  This feature use latency nice priority to decide if a cfs task can
+	  preempt the current running task.
+
+source "kernel/sched/rtg/Kconfig"
+
+config SCHED_EAS
+	bool "EAS scheduler optimization"
+	default n
+	help
+	  Check and migrate the CFS process to a more suitable CPU in the tick.
+
+config SCHED_RT_CAS
+	bool "rt-cas optimization"
+	depends on SCHED_EAS
+	default n
+	help
+	  RT task detects capacity during CPU selection
+
+config SCHED_RT_ACTIVE_LB
+	bool "RT Capacity Aware Misfit Task"
+	depends on SCHED_EAS
+	default n
+	help
+	  Check and migrate the RT process to a more suitable CPU in the tick.
 
 endmenu
 

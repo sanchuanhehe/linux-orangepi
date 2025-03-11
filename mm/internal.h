@@ -11,6 +11,10 @@
 #include <linux/mm.h>
 #include <linux/pagemap.h>
 #include <linux/tracepoint-defs.h>
+#include <linux/swap.h>
+#include <linux/rmap.h>
+#include <linux/types.h>
+#include <linux/reclaim_acct.h>
 
 /*
  * The set of flags that only affect watermark checking and reclaim
@@ -31,6 +35,121 @@
 
 /* Do not use these with a slab allocator */
 #define GFP_SLAB_BUG_MASK (__GFP_DMA32|__GFP_HIGHMEM|~__GFP_BITS_MASK)
+
+enum reclaim_invoker {
+	ALL,
+	KSWAPD,
+	ZSWAPD,
+	DIRECT_RECLAIM,
+	NODE_RECLAIM,
+	SOFT_LIMIT,
+	RCC_RECLAIM,
+	FILE_RECLAIM,
+	ANON_RECLAIM
+};
+
+struct scan_control {
+	/* How many pages shrink_list() should reclaim */
+	unsigned long nr_to_reclaim;
+
+	/*
+	 * Nodemask of nodes allowed by the caller. If NULL, all nodes
+	 * are scanned.
+	 */
+	nodemask_t	*nodemask;
+
+	/*
+	 * The memory cgroup that hit its limit and as a result is the
+	 * primary target of this reclaim invocation.
+	 */
+	struct mem_cgroup *target_mem_cgroup;
+
+	/*
+	 * Scan pressure balancing between anon and file LRUs
+	 */
+	unsigned long	anon_cost;
+	unsigned long	file_cost;
+
+	/* Can active pages be deactivated as part of reclaim? */
+#define DEACTIVATE_ANON 1
+#define DEACTIVATE_FILE 2
+	unsigned int may_deactivate:2;
+	unsigned int force_deactivate:1;
+	unsigned int skipped_deactivate:1;
+
+	/* Writepage batching in laptop mode; RECLAIM_WRITE */
+	unsigned int may_writepage:1;
+
+	/* Can mapped pages be reclaimed? */
+	unsigned int may_unmap:1;
+
+	/* Can pages be swapped as part of reclaim? */
+	unsigned int may_swap:1;
+
+	/*
+	 * Cgroups are not reclaimed below their configured memory.low,
+	 * unless we threaten to OOM. If any cgroups are skipped due to
+	 * memory.low and nothing was reclaimed, go back for memory.low.
+	 */
+	unsigned int memcg_low_reclaim:1;
+	unsigned int memcg_low_skipped:1;
+
+	unsigned int hibernation_mode:1;
+
+	/* One of the zones is ready for compaction */
+	unsigned int compaction_ready:1;
+
+	/* There is easily reclaimable cold cache in the current node */
+	unsigned int cache_trim_mode:1;
+
+	/* The file pages on the current node are dangerously low */
+	unsigned int file_is_tiny:1;
+
+	/* Allocation order */
+	s8 order;
+
+	/* Scan (total_size >> priority) pages at once */
+	s8 priority;
+
+	/* The highest zone to isolate pages for reclaim from */
+	s8 reclaim_idx;
+
+	/* This context's GFP mask */
+	gfp_t gfp_mask;
+
+	/* Incremented by the number of inactive pages that were scanned */
+	unsigned long nr_scanned;
+
+	/* Number of pages freed so far during a call to shrink_zones() */
+	unsigned long nr_reclaimed;
+
+	struct {
+		unsigned int dirty;
+		unsigned int unqueued_dirty;
+		unsigned int congested;
+		unsigned int writeback;
+		unsigned int immediate;
+		unsigned int file_taken;
+		unsigned int taken;
+	} nr;
+
+	enum reclaim_invoker invoker;
+	u32 isolate_count;
+	unsigned long nr_scanned_anon;
+	unsigned long nr_scanned_file;
+	unsigned long nr_reclaimed_anon;
+	unsigned long nr_reclaimed_file;
+
+	/* for recording the reclaimed slab by now */
+	struct reclaim_state reclaim_state;
+};
+
+enum scan_balance {
+	SCAN_EQUAL,
+	SCAN_FRACT,
+	SCAN_ANON,
+	SCAN_FILE,
+};
 
 void page_writeback_init(void);
 
@@ -128,8 +247,22 @@ extern unsigned long highest_memmap_pfn;
 /*
  * in mm/vmscan.c:
  */
+#ifdef CONFIG_MEMORY_MONITOR
+extern void kswapd_monitor_wake_up_queue(void);
+#endif
 extern int isolate_lru_page(struct page *page);
 extern void putback_lru_page(struct page *page);
+extern unsigned int shrink_page_list(struct list_head *page_list, struct pglist_data *pgdat,
+		struct scan_control *sc, struct reclaim_stat *stat, bool ignore_references);
+extern unsigned long isolate_lru_pages(unsigned long nr_to_scan, struct lruvec *lruvec,
+		struct list_head *dst, unsigned long *nr_scanned, struct scan_control *sc,
+		enum lru_list lru);
+extern unsigned move_pages_to_lru(struct lruvec *lruvec, struct list_head *list);
+extern void shrink_active_list(unsigned long nr_to_scan, struct lruvec *lruvec,
+		struct scan_control *sc, enum lru_list lru);
+extern unsigned long shrink_inactive_list(unsigned long nr_to_scan, struct lruvec *lruvec,
+		struct scan_control *sc, enum lru_list lru);
+extern void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc);
 
 /*
  * in mm/rmap.c:
@@ -663,4 +796,43 @@ struct migration_target_control {
 	gfp_t gfp_mask;
 };
 
+#ifdef CONFIG_RECLAIM_ACCT
+#define DELAY_LV0 5000000 /* 5ms */
+#define DELAY_LV1 10000000 /* 10ms */
+#define DELAY_LV2 50000000 /* 50ms */
+#define DELAY_LV3 100000000 /* 100ms */
+#define DELAY_LV4 2000000000 /* 2000ms */
+#define DELAY_LV5 50000000000 /* 50000ms */
+#define NR_DELAY_LV 6
+
+struct reclaim_acct {
+	u64 start[NR_RA_STUBS];
+	u64 delay[NR_RA_STUBS];
+	u64 count[NR_RA_STUBS];
+	u64 freed[NR_RA_STUBS];
+	unsigned int reclaim_type;
+};
+
+bool reclaimacct_initialize_show_data(void);
+void reclaimacct_reinitialize_show_data(void);
+void reclaimacct_destroy_show_data(void);
+
+void reclaimacct_collect_data(void);
+void reclaimacct_collect_reclaim_efficiency(void);
+#endif
+
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+void __page_unqueue_deferred_split(struct page *page);
+static inline void page_unqueue_deferred_split(struct page *page)
+{
+	if (!PageTransCompound(page))
+		return;
+
+	__page_unqueue_deferred_split(page);
+}
+#else
+static inline void page_unqueue_deferred_split(struct page *page)
+{
+}
+#endif
 #endif	/* __MM_INTERNAL_H */

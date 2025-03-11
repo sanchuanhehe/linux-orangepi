@@ -135,6 +135,16 @@ extern int mmap_rnd_compat_bits __read_mostly;
 #endif
 
 /*
+ * With CONFIG_CFI_CLANG, the compiler replaces function addresses in
+ * instrumented C code with jump table addresses. Architectures that
+ * support CFI can define this macro to return the actual function address
+ * when needed.
+ */
+#ifndef function_nocfi
+#define function_nocfi(x) (x)
+#endif
+
+/*
  * To prevent common memory management code establishing
  * a zero page mapping on a read fault.
  * This macro should be defined within <asm/pgtable.h>.
@@ -315,12 +325,32 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_HIGH_ARCH_BIT_2	34	/* bit only usable on 64-bit architectures */
 #define VM_HIGH_ARCH_BIT_3	35	/* bit only usable on 64-bit architectures */
 #define VM_HIGH_ARCH_BIT_4	36	/* bit only usable on 64-bit architectures */
+#define VM_HIGH_ARCH_BIT_5	37	/* bit only usable on 64-bit architectures */
+#define VM_HIGH_ARCH_BIT_6	38	/* bit only usable on 64-bit architectures */
+#define VM_HIGH_ARCH_BIT_7	39	/* bit only usable on 64-bit architectures */
 #define VM_HIGH_ARCH_0	BIT(VM_HIGH_ARCH_BIT_0)
 #define VM_HIGH_ARCH_1	BIT(VM_HIGH_ARCH_BIT_1)
 #define VM_HIGH_ARCH_2	BIT(VM_HIGH_ARCH_BIT_2)
 #define VM_HIGH_ARCH_3	BIT(VM_HIGH_ARCH_BIT_3)
 #define VM_HIGH_ARCH_4	BIT(VM_HIGH_ARCH_BIT_4)
+#define VM_HIGH_ARCH_5	BIT(VM_HIGH_ARCH_BIT_5)
+#define VM_HIGH_ARCH_6	BIT(VM_HIGH_ARCH_BIT_6)
+#define VM_HIGH_ARCH_7	BIT(VM_HIGH_ARCH_BIT_7)
 #endif /* CONFIG_ARCH_USES_HIGH_VMA_FLAGS */
+
+#ifdef CONFIG_MEM_PURGEABLE
+#define VM_PURGEABLE	VM_HIGH_ARCH_5
+#define VM_USEREXPTE	VM_HIGH_ARCH_6
+#else /* CONFIG_MEM_PURGEABLE */
+#define VM_PURGEABLE  0
+#define VM_USEREXPTE  0
+#endif /* CONFIG_MEM_PURGEABLE */
+
+#ifdef CONFIG_SECURITY_XPM
+#define VM_XPM	VM_HIGH_ARCH_7
+#else /* CONFIG_MEM_PURGEABLE */
+#define VM_XPM	VM_NONE
+#endif /* CONFIG_MEM_PURGEABLE */
 
 #ifdef CONFIG_ARCH_HAS_PKEYS
 # define VM_PKEY_SHIFT	VM_HIGH_ARCH_BIT_0
@@ -2048,18 +2078,38 @@ static inline unsigned long get_mm_counter(struct mm_struct *mm, int member)
 void mm_trace_rss_stat(struct mm_struct *mm, int member, long count,
 		       long value);
 
+#ifdef CONFIG_RSS_THRESHOLD
+void listen_rss_threshold(struct mm_struct *mm);
+#endif
+
 static inline void add_mm_counter(struct mm_struct *mm, int member, long value)
 {
 	long count = atomic_long_add_return(value, &mm->rss_stat.count[member]);
 
+<<<<<<< HEAD
 	mm_trace_rss_stat(mm, member, count, value);
+=======
+#ifdef CONFIG_RSS_THRESHOLD
+	listen_rss_threshold(mm);
+#endif
+
+	mm_trace_rss_stat(mm, member, count);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 static inline void inc_mm_counter(struct mm_struct *mm, int member)
 {
 	long count = atomic_long_inc_return(&mm->rss_stat.count[member]);
 
+<<<<<<< HEAD
 	mm_trace_rss_stat(mm, member, count, 1);
+=======
+#ifdef CONFIG_RSS_THRESHOLD
+	listen_rss_threshold(mm);
+#endif
+
+	mm_trace_rss_stat(mm, member, count);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 static inline void dec_mm_counter(struct mm_struct *mm, int member)
@@ -2679,6 +2729,7 @@ static inline int vma_adjust(struct vm_area_struct *vma, unsigned long start,
 
 extern struct vm_area_struct *__vma_merge(struct mm_struct *mm,
 	struct vm_area_struct *prev, unsigned long addr, unsigned long end,
+<<<<<<< HEAD
 	unsigned long vm_flags, struct anon_vma *anon, struct file *file,
 	pgoff_t pgoff, struct mempolicy *mpol, struct vm_userfaultfd_ctx uff,
 	const char __user *user, bool keep_locked);
@@ -2693,6 +2744,10 @@ static inline struct vm_area_struct *vma_merge(struct mm_struct *mm,
 			   pol, uff, user, false);
 }
 
+=======
+	unsigned long vm_flags, struct anon_vma *, struct file *, pgoff_t,
+	struct mempolicy *, struct vm_userfaultfd_ctx, struct anon_vma_name *);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 extern struct anon_vma *find_mergeable_anon_vma(struct vm_area_struct *);
 extern int __split_vma(struct mm_struct *, struct vm_area_struct *,
 	unsigned long addr, int new_below);
@@ -2781,6 +2836,7 @@ extern unsigned long __must_check vm_mmap(struct file *, unsigned long,
 
 struct vm_unmapped_area_info {
 #define VM_UNMAPPED_AREA_TOPDOWN 1
+#define VM_UNMAPPED_AREA_XPM 2
 	unsigned long flags;
 	unsigned long length;
 	unsigned long low_limit;
@@ -3403,6 +3459,18 @@ static inline int seal_check_future_write(int seals, struct vm_area_struct *vma)
 
 	return 0;
 }
+
+#ifdef CONFIG_ANON_VMA_NAME
+int madvise_set_anon_name(struct mm_struct *mm, unsigned long start,
+			  unsigned long len_in,
+			  struct anon_vma_name *anon_name);
+#else
+static inline int
+madvise_set_anon_name(struct mm_struct *mm, unsigned long start,
+		      unsigned long len_in, struct anon_vma_name *anon_name) {
+	return 0;
+}
+#endif
 
 #endif /* __KERNEL__ */
 #endif /* _LINUX_MM_H */

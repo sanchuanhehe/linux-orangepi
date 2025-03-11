@@ -611,13 +611,21 @@
 
 &uart_B {
 	compatible = "amlogic,meson8-uart";
+<<<<<<< HEAD
 	clocks = <&xtal>, <&clkc CLKID_UART0>, <&clkc CLKID_CLK81>;
+=======
+	clocks = <&xtal>, <&clkc CLKID_UART1>, <&clkc CLKID_CLK81>;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	clock-names = "xtal", "pclk", "baud";
 };
 
 &uart_C {
 	compatible = "amlogic,meson8-uart";
+<<<<<<< HEAD
 	clocks = <&xtal>, <&clkc CLKID_UART0>, <&clkc CLKID_CLK81>;
+=======
+	clocks = <&xtal>, <&clkc CLKID_UART2>, <&clkc CLKID_CLK81>;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	clock-names = "xtal", "pclk", "baud";
 };
 

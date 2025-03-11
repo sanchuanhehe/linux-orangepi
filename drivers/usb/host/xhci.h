@@ -937,6 +937,7 @@ struct xhci_virt_ep {
 	 * have to restore the device state to the previous state
 	 */
 	struct xhci_ring		*new_ring;
+	unsigned int			err_count;
 	unsigned int			ep_state;
 #define SET_DEQ_PENDING		(1 << 0)
 #define EP_HALTED		(1 << 1)	/* For stall handling */
@@ -1558,7 +1559,10 @@ struct xhci_td {
 	struct list_head	td_list;
 	struct list_head	cancelled_td_list;
 	int			status;
+<<<<<<< HEAD
 	enum xhci_cancelled_td_status	cancel_status;
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	struct urb		*urb;
 	struct xhci_segment	*start_seg;
 	union xhci_trb		*first_trb;
@@ -1567,6 +1571,10 @@ struct xhci_td {
 	struct xhci_segment	*bounce_seg;
 	/* actual_length of the URB has already been set */
 	bool			urb_length_set;
+<<<<<<< HEAD
+=======
+	bool			error_mid_td;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	unsigned int		num_trbs;
 };
 
@@ -1625,7 +1633,6 @@ struct xhci_ring {
 	 * if we own the TRB (if we are the consumer).  See section 4.9.1.
 	 */
 	u32			cycle_state;
-	unsigned int            err_count;
 	unsigned int		stream_id;
 	unsigned int		num_segs;
 	unsigned int		num_trbs_free;
@@ -1713,13 +1720,8 @@ struct xhci_bus_state {
 	u32			port_c_suspend;
 	u32			suspended_ports;
 	u32			port_remote_wakeup;
-	unsigned long		resume_done[USB_MAXCHILDREN];
 	/* which ports have started to resume */
 	unsigned long		resuming_ports;
-	/* Which ports are waiting on RExit to U0 transition. */
-	unsigned long		rexit_ports;
-	struct completion	rexit_done[USB_MAXCHILDREN];
-	struct completion	u3exit_done[USB_MAXCHILDREN];
 };
 
 
@@ -1742,6 +1744,11 @@ struct xhci_port {
 	int			hcd_portnum;
 	struct xhci_hub		*rhub;
 	struct xhci_port_cap	*port_cap;
+	unsigned int		lpm_incapable:1;
+	unsigned long		resume_timestamp;
+	bool			rexit_active;
+	struct completion	rexit_done;
+	struct completion	u3exit_done;
 };
 
 struct xhci_hub {
@@ -1834,7 +1841,7 @@ struct xhci_hcd {
 
 	/* Host controller watchdog timer structures */
 	unsigned int		xhc_state;
-
+	unsigned long		run_graceperiod;
 	u32			command;
 	struct s3_save		s3;
 /* Host controller is dying - not responding to commands. "I'm not dead yet!"
@@ -1908,7 +1915,12 @@ struct xhci_hcd {
 #define XHCI_EP_CTX_BROKEN_DCS	BIT_ULL(42)
 #define XHCI_SUSPEND_RESUME_CLKS	BIT_ULL(43)
 #define XHCI_RESET_TO_DEFAULT	BIT_ULL(44)
+<<<<<<< HEAD
 #define XHCI_U2_BROKEN_SUSPEND	BIT_ULL(45)
+=======
+#define XHCI_ZHAOXIN_TRB_FETCH	BIT_ULL(45)
+#define XHCI_ZHAOXIN_HOST	BIT_ULL(46)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	unsigned int		num_active_eps;
 	unsigned int		limit_active_eps;
@@ -1960,9 +1972,14 @@ struct xhci_driver_overrides {
 			     struct usb_host_endpoint *ep);
 	int (*check_bandwidth)(struct usb_hcd *, struct usb_device *);
 	void (*reset_bandwidth)(struct usb_hcd *, struct usb_device *);
+<<<<<<< HEAD
 	int (*address_device)(struct usb_hcd *hcd, struct usb_device *udev);
 	int (*bus_suspend)(struct usb_hcd *hcd);
 	int (*bus_resume)(struct usb_hcd *hcd);
+=======
+	int (*update_hub_device)(struct usb_hcd *hcd, struct usb_device *hdev,
+			    struct usb_tt *tt, gfp_t mem_flags);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 };
 
 #define	XHCI_CFC_DELAY		10
@@ -2119,7 +2136,12 @@ int xhci_drop_endpoint(struct usb_hcd *hcd, struct usb_device *udev,
 		       struct usb_host_endpoint *ep);
 int xhci_check_bandwidth(struct usb_hcd *hcd, struct usb_device *udev);
 void xhci_reset_bandwidth(struct usb_hcd *hcd, struct usb_device *udev);
+<<<<<<< HEAD
 int xhci_address_device(struct usb_hcd *hcd, struct usb_device *udev);
+=======
+int xhci_update_hub_device(struct usb_hcd *hcd, struct usb_device *hdev,
+			   struct usb_tt *tt, gfp_t mem_flags);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 int xhci_disable_slot(struct xhci_hcd *xhci, u32 slot_id);
 int xhci_ext_cap_init(struct xhci_hcd *xhci);
 

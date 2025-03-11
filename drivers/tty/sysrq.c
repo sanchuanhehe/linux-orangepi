@@ -262,13 +262,18 @@ static void sysrq_handle_showallcpus(int key)
 		if (in_irq())
 			regs = get_irq_regs();
 
+<<<<<<< HEAD
 		pr_info("CPU%d:\n", smp_processor_id());
+=======
+		pr_info("CPU%d:\n", get_cpu());
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		if (regs)
 			show_regs(regs);
 		else
 			show_stack(NULL, NULL, KERN_INFO);
 
 		schedule_work(&sysrq_showallcpus);
+		put_cpu();
 	}
 }
 
@@ -1148,6 +1153,9 @@ int unregister_sysrq_key(int key, const struct sysrq_key_op *op_p)
 EXPORT_SYMBOL(unregister_sysrq_key);
 
 #ifdef CONFIG_PROC_FS
+
+static DEFINE_MUTEX(sysrq_mutex);
+
 /*
  * writing 'C' to /proc/sysrq-trigger is like sysrq-C
  */
@@ -1159,7 +1167,10 @@ static ssize_t write_sysrq_trigger(struct file *file, const char __user *buf,
 
 		if (get_user(c, buf))
 			return -EFAULT;
+
+		mutex_lock(&sysrq_mutex);
 		__handle_sysrq(c, false);
+		mutex_unlock(&sysrq_mutex);
 	}
 
 	return count;

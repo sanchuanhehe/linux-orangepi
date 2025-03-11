@@ -22,6 +22,8 @@ config FS_IOMAP
 
 source "fs/ext2/Kconfig"
 source "fs/ext4/Kconfig"
+source "fs/hmdfs/Kconfig"
+source "fs/sharefs/Kconfig"
 source "fs/jbd2/Kconfig"
 
 config FS_MBCACHE
@@ -41,6 +43,7 @@ source "fs/btrfs/Kconfig"
 source "fs/nilfs2/Kconfig"
 source "fs/f2fs/Kconfig"
 source "fs/zonefs/Kconfig"
+source "fs/proc/memory_security/Kconfig"
 
 config FS_DAX
 	bool "Direct Access (DAX) support"
@@ -112,6 +115,8 @@ config MANDATORY_FILE_LOCKING
 	  To the best of my knowledge this is dead code that no one cares about.
 
 source "fs/crypto/Kconfig"
+
+source "fs/code_sign/Kconfig"
 
 source "fs/verity/Kconfig"
 
@@ -346,6 +351,7 @@ endif # NETWORK_FILESYSTEMS
 source "fs/nls/Kconfig"
 source "fs/dlm/Kconfig"
 source "fs/unicode/Kconfig"
+source "fs/epfs/Kconfig"
 
 config IO_WQ
 	bool

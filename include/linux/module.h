@@ -27,7 +27,10 @@
 #include <linux/srcu.h>
 #include <linux/static_call_types.h>
 #include <linux/cfi.h>
+<<<<<<< HEAD
 #include <linux/android_kabi.h>
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 #include <linux/percpu.h>
 #include <asm/module.h>
@@ -133,17 +136,29 @@ extern void cleanup_module(void);
 #define module_init(initfn)					\
 	static inline initcall_t __maybe_unused __inittest(void)		\
 	{ return initfn; }					\
+<<<<<<< HEAD
 	int init_module(void) __copy(initfn) 			\
 		__attribute__((alias(#initfn)));		\
 	__CFI_ADDRESSABLE(init_module)
+=======
+	int init_module(void) __copy(initfn)			\
+		__attribute__((alias(#initfn)));		\
+	__CFI_ADDRESSABLE(init_module, __initdata);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 /* This is only required if you want to be unloadable. */
 #define module_exit(exitfn)					\
 	static inline exitcall_t __maybe_unused __exittest(void)		\
 	{ return exitfn; }					\
+<<<<<<< HEAD
 	void cleanup_module(void) __copy(exitfn) 		\
 		__attribute__((alias(#exitfn))); 		\
 	__CFI_ADDRESSABLE(cleanup_module)
+=======
+	void cleanup_module(void) __copy(exitfn)		\
+		__attribute__((alias(#exitfn)));		\
+	__CFI_ADDRESSABLE(cleanup_module, __exitdata);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 #endif
 

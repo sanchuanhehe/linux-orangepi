@@ -623,6 +623,10 @@ static int __collapse_huge_page_isolate(struct vm_area_struct *vma,
 			result = SCAN_PTE_NON_PRESENT;
 			goto out;
 		}
+		if (pte_uffd_wp(pteval)) {
+			result = SCAN_PTE_UFFD_WP;
+			goto out;
+		}
 		page = vm_normal_page(vma, address, pteval);
 		if (unlikely(!page)) {
 			result = SCAN_PAGE_NULL;
@@ -1484,8 +1488,11 @@ void collapse_pte_mapped_thp(struct mm_struct *mm, unsigned long addr)
 	if (!pmd)
 		goto drop_hpage;
 
+<<<<<<< HEAD
 	vm_write_begin(vma);
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	/*
 	 * We need to lock the mapping so that from here on, only GUP-fast and
 	 * hardware page walks can access the parts of the page tables that
@@ -1545,16 +1552,31 @@ void collapse_pte_mapped_thp(struct mm_struct *mm, unsigned long addr)
 	}
 
 	/* step 4: collapse pmd */
+<<<<<<< HEAD
+=======
+	/* we make no change to anon, but protect concurrent anon page lookup */
+	if (vma->anon_vma)
+		anon_vma_lock_write(vma->anon_vma);
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	mmu_notifier_range_init(&range, MMU_NOTIFY_CLEAR, 0, NULL, mm, haddr,
 				haddr + HPAGE_PMD_SIZE);
 	mmu_notifier_invalidate_range_start(&range);
 	_pmd = pmdp_collapse_flush(vma, haddr, pmd);
+<<<<<<< HEAD
 	vm_write_end(vma);
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	mm_dec_nr_ptes(mm);
 	tlb_remove_table_sync_one();
 	mmu_notifier_invalidate_range_end(&range);
 	pte_free(mm, pmd_pgtable(_pmd));
 
+<<<<<<< HEAD
+=======
+	if (vma->anon_vma)
+		anon_vma_unlock_write(vma->anon_vma);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	i_mmap_unlock_write(vma->vm_file->f_mapping);
 
 drop_hpage:
@@ -1564,7 +1586,10 @@ drop_hpage:
 
 abort:
 	pte_unmap_unlock(start_pte, ptl);
+<<<<<<< HEAD
 	vm_write_end(vma);
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	i_mmap_unlock_write(vma->vm_file->f_mapping);
 	goto drop_hpage;
 }
@@ -1640,7 +1665,10 @@ static void retract_page_tables(struct address_space *mapping, pgoff_t pgoff)
 			if (!khugepaged_test_exit(mm)) {
 				struct mmu_notifier_range range;
 
+<<<<<<< HEAD
 				vm_write_begin(vma);
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 				mmu_notifier_range_init(&range,
 							MMU_NOTIFY_CLEAR, 0,
 							NULL, mm, addr,
@@ -1648,7 +1676,10 @@ static void retract_page_tables(struct address_space *mapping, pgoff_t pgoff)
 				mmu_notifier_invalidate_range_start(&range);
 				/* assume page table is clear */
 				_pmd = pmdp_collapse_flush(vma, addr, pmd);
+<<<<<<< HEAD
 				vm_write_end(vma);
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 				mm_dec_nr_ptes(mm);
 				tlb_remove_table_sync_one();
 				pte_free(mm, pmd_pgtable(_pmd));

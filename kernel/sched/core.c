@@ -16,6 +16,12 @@
 
 #include <linux/kcov.h>
 #include <linux/scs.h>
+#include <linux/irq.h>
+#include <linux/delay.h>
+
+#ifdef CONFIG_QOS_CTRL
+#include <linux/sched/qos_ctrl.h>
+#endif
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
@@ -26,6 +32,8 @@
 
 #include "pelt.h"
 #include "smp.h"
+#include "walt.h"
+#include "rtg/rtg.h"
 
 #include <trace/hooks/sched.h>
 #include <trace/hooks/dtask.h>
@@ -908,6 +916,49 @@ static void set_load_weight(struct task_struct *p)
 	}
 }
 
+#ifdef CONFIG_SCHED_LATENCY_NICE
+static void set_latency_weight(struct task_struct *p)
+{
+	p->se.latency_weight = sched_latency_to_weight[p->latency_prio];
+}
+
+static void __setscheduler_latency(struct task_struct *p,
+		const struct sched_attr *attr)
+{
+	if (attr->sched_flags & SCHED_FLAG_LATENCY_NICE) {
+		p->latency_prio = NICE_TO_LATENCY(attr->sched_latency_nice);
+		set_latency_weight(p);
+	}
+}
+
+static int latency_nice_validate(struct task_struct *p, bool user,
+				 const struct sched_attr *attr)
+{
+	if (attr->sched_latency_nice > MAX_LATENCY_NICE)
+		return -EINVAL;
+	if (attr->sched_latency_nice < MIN_LATENCY_NICE)
+		return -EINVAL;
+	/* Use the same security checks as NICE */
+	if (user && attr->sched_latency_nice < LATENCY_TO_NICE(p->latency_prio)
+	    && !capable(CAP_SYS_NICE))
+		return -EPERM;
+
+	return 0;
+}
+#else
+static void
+__setscheduler_latency(struct task_struct *p, const struct sched_attr *attr)
+{
+}
+
+static inline
+int latency_nice_validate(struct task_struct *p, bool user,
+			  const struct sched_attr *attr)
+{
+	return -EOPNOTSUPP;
+}
+#endif
+
 #ifdef CONFIG_UCLAMP_TASK
 /*
  * Serializes updates of utilization clamp values
@@ -1018,7 +1069,7 @@ static inline void uclamp_idle_reset(struct rq *rq, enum uclamp_id clamp_id,
 	if (!(rq->uclamp_flags & UCLAMP_FLAG_IDLE))
 		return;
 
-	WRITE_ONCE(rq->uclamp[clamp_id].value, clamp_value);
+	uclamp_rq_set(rq, clamp_id, clamp_value);
 }
 
 static inline
@@ -1211,8 +1262,8 @@ static inline void uclamp_rq_inc_id(struct rq *rq, struct task_struct *p,
 	if (bucket->tasks == 1 || uc_se->value > bucket->value)
 		bucket->value = uc_se->value;
 
-	if (uc_se->value > READ_ONCE(uc_rq->value))
-		WRITE_ONCE(uc_rq->value, uc_se->value);
+	if (uc_se->value > uclamp_rq_get(rq, clamp_id))
+		uclamp_rq_set(rq, clamp_id, uc_se->value);
 }
 
 /*
@@ -1278,7 +1329,7 @@ static inline void uclamp_rq_dec_id(struct rq *rq, struct task_struct *p,
 	if (likely(bucket->tasks))
 		return;
 
-	rq_clamp = READ_ONCE(uc_rq->value);
+	rq_clamp = uclamp_rq_get(rq, clamp_id);
 	/*
 	 * Defensive programming: this should never happen. If it happens,
 	 * e.g. due to future modification, warn and fixup the expected value.
@@ -1286,7 +1337,7 @@ static inline void uclamp_rq_dec_id(struct rq *rq, struct task_struct *p,
 	SCHED_WARN_ON(bucket->value > rq_clamp);
 	if (bucket->value >= rq_clamp) {
 		bkt_clamp = uclamp_rq_max_value(rq, clamp_id, uc_se->value);
-		WRITE_ONCE(uc_rq->value, bkt_clamp);
+		uclamp_rq_set(rq, clamp_id, bkt_clamp);
 	}
 }
 
@@ -1692,6 +1743,9 @@ static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 
 void activate_task(struct rq *rq, struct task_struct *p, int flags)
 {
+	if (task_on_rq_migrating(p))
+		flags |= ENQUEUE_MIGRATED;
+
 	enqueue_task(rq, p, flags);
 
 	p->on_rq = TASK_ON_RQ_QUEUED;
@@ -1855,7 +1909,20 @@ static struct rq *move_queued_task(struct rq *rq, struct rq_flags *rf,
 		goto attach;
 
 	deactivate_task(rq, p, DEQUEUE_NOCLOCK);
+#ifdef CONFIG_SCHED_WALT
+	double_lock_balance(rq, cpu_rq(new_cpu));
+	if (!(rq->clock_update_flags & RQCF_UPDATED))
+		update_rq_clock(rq);
+#endif
 	set_task_cpu(p, new_cpu);
+<<<<<<< HEAD
+=======
+#ifdef CONFIG_SCHED_WALT
+	double_rq_unlock(cpu_rq(new_cpu), rq);
+#else
+	rq_unlock(rq, rf);
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 attach:
 	rq_unlock(rq, rf);
@@ -1993,6 +2060,9 @@ static int __set_cpus_allowed_ptr_locked(struct task_struct *p,
 	const struct cpumask *cpu_allowed_mask = task_cpu_possible_mask(p);
 	unsigned int dest_cpu;
 	int ret = 0;
+#ifdef CONFIG_CPU_ISOLATION_OPT
+	cpumask_t allowed_mask;
+#endif
 
 	update_rq_clock(rq);
 
@@ -2018,6 +2088,20 @@ static int __set_cpus_allowed_ptr_locked(struct task_struct *p,
 	if (cpumask_equal(&p->cpus_mask, new_mask))
 		goto out;
 
+#ifdef CONFIG_CPU_ISOLATION_OPT
+	cpumask_andnot(&allowed_mask, new_mask, cpu_isolated_mask);
+	cpumask_and(&allowed_mask, &allowed_mask, cpu_valid_mask);
+
+	dest_cpu = cpumask_any(&allowed_mask);
+	if (dest_cpu >= nr_cpu_ids) {
+		cpumask_and(&allowed_mask, cpu_valid_mask, new_mask);
+		dest_cpu = cpumask_any(&allowed_mask);
+		if (!cpumask_intersects(new_mask, cpu_valid_mask)) {
+			ret = -EINVAL;
+			goto out;
+		}
+	}
+#else
 	/*
 	 * Picking a ~random cpu helps in cases where we are changing affinity
 	 * for groups of tasks (ie. cpuset), so that load balancing is not
@@ -2028,6 +2112,7 @@ static int __set_cpus_allowed_ptr_locked(struct task_struct *p,
 		ret = -EINVAL;
 		goto out;
 	}
+#endif
 
 	do_set_cpus_allowed(p, new_mask);
 
@@ -2042,8 +2127,13 @@ static int __set_cpus_allowed_ptr_locked(struct task_struct *p,
 	}
 
 	/* Can the task run on the task's current CPU? If so, we're done */
+#ifdef CONFIG_CPU_ISOLATION_OPT
+	if (cpumask_test_cpu(task_cpu(p), &allowed_mask))
+		goto out;
+#else
 	if (cpumask_test_cpu(task_cpu(p), new_mask))
 		goto out;
+#endif
 
 	if (task_running(rq, p) || p->state == TASK_WAKING) {
 		struct migration_arg arg = { p, dest_cpu };
@@ -2204,7 +2294,11 @@ void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 		p->se.nr_migrations++;
 		rseq_migrate(p);
 		perf_event_task_migrate(p);
+<<<<<<< HEAD
 		trace_android_rvh_set_task_cpu(p, new_cpu);
+=======
+		fixup_busy_time(p, new_cpu);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	}
 
 	__set_task_cpu(p, new_cpu);
@@ -2482,16 +2576,28 @@ EXPORT_SYMBOL_GPL(kick_process);
  * select_task_rq() below may allow selection of !active CPUs in order
  * to satisfy the above rules.
  */
+#ifdef CONFIG_CPU_ISOLATION_OPT
+static int select_fallback_rq(int cpu, struct task_struct *p, bool allow_iso)
+#else
 static int select_fallback_rq(int cpu, struct task_struct *p)
+#endif
 {
 	int nid = cpu_to_node(cpu);
 	const struct cpumask *nodemask = NULL;
+<<<<<<< HEAD
 	enum { cpuset, possible, fail } state = cpuset;
 	int dest_cpu = -1;
 
 	trace_android_rvh_select_fallback_rq(cpu, p, &dest_cpu);
 	if (dest_cpu >= 0)
 		return dest_cpu;
+=======
+	enum { cpuset, possible, fail, bug } state = cpuset;
+	int dest_cpu;
+#ifdef CONFIG_CPU_ISOLATION_OPT
+	int isolated_candidate = -1;
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	/*
 	 * If the node that the CPU is on has been offlined, cpu_to_node()
@@ -2503,7 +2609,15 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 
 		/* Look for allowed, online CPU in same node. */
 		for_each_cpu(dest_cpu, nodemask) {
+<<<<<<< HEAD
 			if (is_cpu_allowed(p, dest_cpu))
+=======
+			if (!cpu_active(dest_cpu))
+				continue;
+			if (cpu_isolated(dest_cpu))
+				continue;
+			if (cpumask_test_cpu(dest_cpu, p->cpus_ptr))
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 				return dest_cpu;
 		}
 	}
@@ -2513,7 +2627,18 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 		for_each_cpu(dest_cpu, p->cpus_ptr) {
 			if (!is_cpu_allowed(p, dest_cpu))
 				continue;
+#ifdef CONFIG_CPU_ISOLATION_OPT
+			if (cpu_isolated(dest_cpu)) {
+				if (allow_iso)
+					isolated_candidate = dest_cpu;
+				continue;
+			}
+			goto out;
+		}
 
+		if (isolated_candidate != -1) {
+			dest_cpu = isolated_candidate;
+#endif
 			goto out;
 		}
 
@@ -2531,6 +2656,15 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
 			state = fail;
 			break;
 		case fail:
+#ifdef CONFIG_CPU_ISOLATION_OPT
+			allow_iso = true;
+			state = bug;
+			break;
+#else
+			/* fall through; */
+#endif
+
+		case bug:
 			BUG();
 			break;
 		}
@@ -2558,6 +2692,10 @@ out:
 static inline
 int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 {
+#ifdef CONFIG_CPU_ISOLATION_OPT
+	bool allow_isolated = (p->flags & PF_KTHREAD);
+#endif
+
 	lockdep_assert_held(&p->pi_lock);
 
 	if (p->nr_cpus_allowed > 1)
@@ -2575,8 +2713,14 @@ int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 	 * [ this allows ->select_task() to simply return task_cpu(p) and
 	 *   not worry about this generic constraint ]
 	 */
+#ifdef CONFIG_CPU_ISOLATION_OPT
+	if (unlikely(!is_cpu_allowed(p, cpu)) ||
+			(cpu_isolated(cpu) && !allow_isolated))
+		cpu = select_fallback_rq(task_cpu(p), p, allow_isolated);
+#else
 	if (unlikely(!is_cpu_allowed(p, cpu)))
 		cpu = select_fallback_rq(task_cpu(p), p);
+#endif
 
 	return cpu;
 }
@@ -3009,6 +3153,26 @@ static void ttwu_queue(struct task_struct *p, int cpu, int wake_flags)
  * accesses to the task state; see try_to_wake_up() and set_current_state().
  */
 
+#ifdef CONFIG_SMP
+#ifdef CONFIG_SCHED_WALT
+/* utility function to update walt signals at wakeup */
+static inline void walt_try_to_wake_up(struct task_struct *p)
+{
+	struct rq *rq = cpu_rq(task_cpu(p));
+	struct rq_flags rf;
+	u64 wallclock;
+
+	rq_lock_irqsave(rq, &rf);
+	wallclock = sched_ktime_clock();
+	update_task_ravg(rq->curr, rq, TASK_UPDATE, wallclock, 0);
+	update_task_ravg(p, rq, TASK_WAKE, wallclock, 0);
+	rq_unlock_irqrestore(rq, &rf);
+}
+#else
+#define walt_try_to_wake_up(a) {}
+#endif
+#endif
+
 /**
  * try_to_wake_up - wake up a thread
  * @p: the thread to be awakened
@@ -3158,6 +3322,8 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	 * care about it's own p->state. See the comment in __schedule().
 	 */
 	smp_acquire__after_ctrl_dep();
+
+	walt_try_to_wake_up(p);
 
 	/*
 	 * We're doing the wakeup (@success == 1), they did a dequeue (p->on_rq
@@ -3349,6 +3515,9 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 #ifdef CONFIG_SMP
 	p->wake_entry.u_flags = CSD_TYPE_TTWU;
 #endif
+#ifdef CONFIG_SCHED_RTG
+	p->rtg_depth = 0;
+#endif
 }
 
 DEFINE_STATIC_KEY_FALSE(sched_numa_balancing);
@@ -3468,7 +3637,15 @@ static inline void init_schedstats(void) {}
  */
 int sched_fork(unsigned long clone_flags, struct task_struct *p)
 {
+<<<<<<< HEAD
 	trace_android_rvh_sched_fork(p);
+=======
+	init_new_task_load(p);
+
+#ifdef CONFIG_QOS_CTRL
+	init_task_qos(p);
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	__sched_fork(clone_flags, p);
 	/*
@@ -3484,6 +3661,11 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	p->prio = current->normal_prio;
 	trace_android_rvh_prepare_prio_fork(p);
 
+#ifdef CONFIG_SCHED_LATENCY_NICE
+	/* Propagate the parent's latency requirements to the child as well */
+	p->latency_prio = current->latency_prio;
+#endif
+
 	uclamp_fork(p);
 
 	/*
@@ -3492,13 +3674,28 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	if (unlikely(p->sched_reset_on_fork)) {
 		if (task_has_dl_policy(p) || task_has_rt_policy(p)) {
 			p->policy = SCHED_NORMAL;
+#ifdef CONFIG_SCHED_RTG
+			if (current->rtg_depth != 0)
+				p->static_prio = current->static_prio;
+			else
+				p->static_prio = NICE_TO_PRIO(0);
+#else
 			p->static_prio = NICE_TO_PRIO(0);
+#endif
 			p->rt_priority = 0;
 		} else if (PRIO_TO_NICE(p->static_prio) < 0)
 			p->static_prio = NICE_TO_PRIO(0);
 
 		p->prio = p->normal_prio = p->static_prio;
 		set_load_weight(p);
+<<<<<<< HEAD
+=======
+
+#ifdef CONFIG_SCHED_LATENCY_NICE
+		p->latency_prio = NICE_TO_LATENCY(0);
+		set_latency_weight(p);
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 		/*
 		 * We don't need the reset flag anymore after the fork. It has
@@ -3517,7 +3714,10 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	init_entity_runnable_average(&p->se);
 	trace_android_rvh_finish_prio_fork(p);
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #ifdef CONFIG_SCHED_INFO
 	if (likely(sched_info_on()))
 		memset(&p->sched_info, 0, sizeof(p->sched_info));
@@ -3533,6 +3733,7 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	return 0;
 }
 
+<<<<<<< HEAD
 void sched_cgroup_fork(struct task_struct *p, struct kernel_clone_args *kargs)
 {
 	unsigned long flags;
@@ -3564,7 +3765,31 @@ void sched_cgroup_fork(struct task_struct *p, struct kernel_clone_args *kargs)
 }
 
 void sched_post_fork(struct task_struct *p)
+=======
+void sched_post_fork(struct task_struct *p, struct kernel_clone_args *kargs)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
+	unsigned long flags;
+#ifdef CONFIG_CGROUP_SCHED
+	struct task_group *tg;
+#endif
+
+	raw_spin_lock_irqsave(&p->pi_lock, flags);
+#ifdef CONFIG_CGROUP_SCHED
+	tg = container_of(kargs->cset->subsys[cpu_cgrp_id],
+			  struct task_group, css);
+	p->sched_task_group = autogroup_task_group(p, tg);
+#endif
+	rseq_migrate(p);
+	/*
+	 * We're setting the CPU for the first time, we don't migrate,
+	 * so use __set_task_cpu().
+	 */
+	__set_task_cpu(p, smp_processor_id());
+	if (p->sched_class->task_fork)
+		p->sched_class->task_fork(p);
+	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
+
 	uclamp_post_fork(p);
 }
 
@@ -3599,6 +3824,8 @@ void wake_up_new_task(struct task_struct *p)
 	trace_android_rvh_wake_up_new_task(p);
 
 	raw_spin_lock_irqsave(&p->pi_lock, rf.flags);
+	add_new_task_to_grp(p);
+
 	p->state = TASK_RUNNING;
 #ifdef CONFIG_SMP
 	/*
@@ -3617,6 +3844,8 @@ void wake_up_new_task(struct task_struct *p)
 	update_rq_clock(rq);
 	post_init_entity_util_avg(p);
 	trace_android_rvh_new_task_stats(p);
+
+	mark_task_starting(p);
 
 	activate_task(rq, p, ENQUEUE_NOCLOCK);
 	trace_sched_wakeup_new(p);
@@ -4166,7 +4395,7 @@ void sched_exec(void)
 	if (dest_cpu == smp_processor_id())
 		goto unlock;
 
-	if (likely(cpu_active(dest_cpu))) {
+	if (likely(cpu_active(dest_cpu) && likely(!cpu_isolated(dest_cpu)))) {
 		struct migration_arg arg = { p, dest_cpu };
 
 		raw_spin_unlock_irqrestore(&p->pi_lock, flags);
@@ -4257,6 +4486,7 @@ void scheduler_tick(void)
 	struct rq *rq = cpu_rq(cpu);
 	struct task_struct *curr = rq->curr;
 	struct rq_flags rf;
+	u64 wallclock;
 	unsigned long thermal_pressure;
 
 	arch_scale_freq_tick();
@@ -4264,7 +4494,13 @@ void scheduler_tick(void)
 
 	rq_lock(rq, &rf);
 
+<<<<<<< HEAD
 	trace_android_rvh_tick_entry(rq);
+=======
+	set_window_start(rq);
+	wallclock = sched_ktime_clock();
+	update_task_ravg(rq->curr, rq, TASK_UPDATE, wallclock, 0);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	update_rq_clock(rq);
 	thermal_pressure = arch_scale_thermal_pressure(cpu_of(rq));
 	update_thermal_load_avg(rq_clock_thermal(rq), rq, thermal_pressure);
@@ -4274,11 +4510,19 @@ void scheduler_tick(void)
 
 	rq_unlock(rq, &rf);
 
+#ifdef CONFIG_SCHED_RTG
+	sched_update_rtg_tick(curr);
+#endif
 	perf_event_task_tick();
 
 #ifdef CONFIG_SMP
 	rq->idle_balance = idle_cpu(cpu);
 	trigger_load_balance(rq);
+
+#ifdef CONFIG_SCHED_EAS
+	if (curr->sched_class->check_for_migration)
+		curr->sched_class->check_for_migration(rq, curr);
+#endif
 #endif
 
 	trace_android_vh_scheduler_tick(rq);
@@ -4535,8 +4779,7 @@ static noinline void __schedule_bug(struct task_struct *prev)
 		pr_err("Preemption disabled at:");
 		print_ip_sym(KERN_ERR, preempt_disable_ip);
 	}
-	if (panic_on_warn)
-		panic("scheduling while atomic\n");
+	check_panic_on_warn("scheduling while atomic");
 
 	trace_android_rvh_schedule_bug(prev);
 
@@ -4690,6 +4933,7 @@ static void __sched notrace __schedule(bool preempt)
 	struct rq_flags rf;
 	struct rq *rq;
 	int cpu;
+	u64 wallclock;
 
 	cpu = smp_processor_id();
 	rq = cpu_rq(cpu);
@@ -4772,8 +5016,18 @@ static void __sched notrace __schedule(bool preempt)
 	clear_tsk_need_resched(prev);
 	clear_preempt_need_resched();
 
+<<<<<<< HEAD
 	trace_android_rvh_schedule(prev, next, rq);
+=======
+	wallclock = sched_ktime_clock();
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (likely(prev != next)) {
+#ifdef CONFIG_SCHED_WALT
+		if (!prev->on_rq)
+			prev->last_sleep_ts = wallclock;
+#endif
+		update_task_ravg(prev, rq, PUT_PREV_TASK, wallclock, 0);
+		update_task_ravg(next, rq, PICK_NEXT_TASK, wallclock, 0);
 		rq->nr_switches++;
 		/*
 		 * RCU users of rcu_dereference(rq->curr) may not see
@@ -4803,6 +5057,7 @@ static void __sched notrace __schedule(bool preempt)
 		/* Also unlocks the rq: */
 		rq = context_switch(rq, prev, next, &rf);
 	} else {
+		update_task_ravg(prev, rq, TASK_UPDATE, wallclock, 0);
 		rq->clock_update_flags &= ~(RQCF_ACT_SKIP|RQCF_REQ_SKIP);
 		rq_unlock_irq(rq, &rf);
 	}
@@ -5480,6 +5735,7 @@ static int __sched_setscheduler(struct task_struct *p,
 	int reset_on_fork;
 	int queue_flags = DEQUEUE_SAVE | DEQUEUE_MOVE | DEQUEUE_NOCLOCK;
 	struct rq *rq;
+	bool cpuset_locked = false;
 
 	/* The pi code expects interrupts enabled */
 	BUG_ON(pi && in_interrupt());
@@ -5581,6 +5837,24 @@ recheck:
 			return retval;
 	}
 
+<<<<<<< HEAD
+=======
+	if (attr->sched_flags & SCHED_FLAG_LATENCY_NICE) {
+		retval = latency_nice_validate(p, user, attr);
+		if (retval)
+			return retval;
+	}
+
+	/*
+	 * SCHED_DEADLINE bandwidth accounting relies on stable cpusets
+	 * information.
+	 */
+	if (dl_policy(policy) || dl_policy(p->policy)) {
+		cpuset_locked = true;
+		cpuset_lock();
+	}
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	/*
 	 * Make sure no PI-waiters arrive (or leave) while we are
 	 * changing the priority of the task:
@@ -5612,6 +5886,11 @@ recheck:
 			goto change;
 		if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP)
 			goto change;
+#ifdef CONFIG_SCHED_LATENCY_NICE
+		if (attr->sched_flags & SCHED_FLAG_LATENCY_NICE &&
+		    attr->sched_latency_nice != LATENCY_TO_NICE(p->latency_prio))
+			goto change;
+#endif
 
 		p->sched_reset_on_fork = reset_on_fork;
 		retval = 0;
@@ -5655,6 +5934,11 @@ change:
 	if (unlikely(oldpolicy != -1 && oldpolicy != p->policy)) {
 		policy = oldpolicy = -1;
 		task_rq_unlock(rq, p, &rf);
+<<<<<<< HEAD
+=======
+		if (cpuset_locked)
+			cpuset_unlock();
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		goto recheck;
 	}
 
@@ -5699,6 +5983,7 @@ change:
 		__setscheduler_prio(p, newprio);
 		trace_android_rvh_setscheduler(p);
 	}
+	__setscheduler_latency(p, attr);
 	__setscheduler_uclamp(p, attr);
 
 	if (queued) {
@@ -5720,7 +6005,13 @@ change:
 	preempt_disable();
 	task_rq_unlock(rq, p, &rf);
 
+<<<<<<< HEAD
 	if (pi)
+=======
+	if (pi) {
+		if (cpuset_locked)
+			cpuset_unlock();
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		rt_mutex_adjust_pi(p);
 
 	/* Run balance callbacks after we've adjusted the PI chain: */
@@ -5731,6 +6022,11 @@ change:
 
 unlock:
 	task_rq_unlock(rq, p, &rf);
+<<<<<<< HEAD
+=======
+	if (cpuset_locked)
+		cpuset_unlock();
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	return retval;
 }
 
@@ -5910,6 +6206,11 @@ static int sched_copy_attr(struct sched_attr __user *uattr, struct sched_attr *a
 	    size < SCHED_ATTR_SIZE_VER1)
 		return -EINVAL;
 
+#ifdef CONFIG_SCHED_LATENCY_NICE
+	if ((attr->sched_flags & SCHED_FLAG_LATENCY_NICE) &&
+	    size < SCHED_ATTR_SIZE_VER2)
+		return -EINVAL;
+#endif
 	/*
 	 * XXX: Do we want to be lenient like existing syscalls; or do we want
 	 * to be strict and return an error on out-of-bounds values?
@@ -6147,6 +6448,10 @@ SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 	get_params(p, &kattr);
 	kattr.sched_flags &= SCHED_FLAG_ALL;
 
+#ifdef CONFIG_SCHED_LATENCY_NICE
+	kattr.sched_latency_nice = LATENCY_TO_NICE(p->latency_prio);
+#endif
+
 #ifdef CONFIG_UCLAMP_TASK
 	/*
 	 * This could race with another potential updater, but this is fine
@@ -6171,7 +6476,14 @@ long sched_setaffinity(pid_t pid, const struct cpumask *in_mask)
 	cpumask_var_t cpus_allowed, new_mask;
 	struct task_struct *p;
 	int retval;
+<<<<<<< HEAD
 	int skip = 0;
+=======
+#ifdef CONFIG_CPU_ISOLATION_OPT
+	int dest_cpu;
+	cpumask_t allowed_mask;
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	rcu_read_lock();
 
@@ -6236,22 +6548,34 @@ long sched_setaffinity(pid_t pid, const struct cpumask *in_mask)
 	}
 #endif
 again:
-	retval = __set_cpus_allowed_ptr(p, new_mask, true);
-
-	if (!retval) {
-		cpuset_cpus_allowed(p, cpus_allowed);
-		if (!cpumask_subset(new_mask, cpus_allowed)) {
-			/*
-			 * We must have raced with a concurrent cpuset
-			 * update. Just reset the cpus_allowed to the
-			 * cpuset's cpus_allowed
-			 */
-			cpumask_copy(new_mask, cpus_allowed);
-			goto again;
+#ifdef CONFIG_CPU_ISOLATION_OPT
+	cpumask_andnot(&allowed_mask, new_mask, cpu_isolated_mask);
+	dest_cpu = cpumask_any_and(cpu_active_mask, &allowed_mask);
+	if (dest_cpu < nr_cpu_ids) {
+#endif
+		retval = __set_cpus_allowed_ptr(p, new_mask, true);
+		if (!retval) {
+			cpuset_cpus_allowed(p, cpus_allowed);
+			if (!cpumask_subset(new_mask, cpus_allowed)) {
+				/*
+				 * We must have raced with a concurrent cpuset
+				 * update. Just reset the cpus_allowed to the
+				 * cpuset's cpus_allowed
+				 */
+				cpumask_copy(new_mask, cpus_allowed);
+				goto again;
+			}
 		}
+#ifdef CONFIG_CPU_ISOLATION_OPT
+	} else {
+		retval = -EINVAL;
 	}
+<<<<<<< HEAD
 
 	trace_android_rvh_sched_setaffinity(p, in_mask, &retval);
+=======
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 out_free_new_mask:
 	free_cpumask_var(new_mask);
@@ -6316,6 +6640,16 @@ long sched_getaffinity(pid_t pid, struct cpumask *mask)
 
 	raw_spin_lock_irqsave(&p->pi_lock, flags);
 	cpumask_and(mask, &p->cpus_mask, cpu_active_mask);
+
+#ifdef CONFIG_CPU_ISOLATION_OPT
+	/* The userspace tasks are forbidden to run on
+	 * isolated CPUs. So exclude isolated CPUs from
+	 * the getaffinity.
+	 */
+	if (!(p->flags & PF_KTHREAD))
+		cpumask_andnot(mask, mask, cpu_isolated_mask);
+#endif
+
 	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
 
 out_unlock:
@@ -6344,14 +6678,14 @@ SYSCALL_DEFINE3(sched_getaffinity, pid_t, pid, unsigned int, len,
 	if (len & (sizeof(unsigned long)-1))
 		return -EINVAL;
 
-	if (!alloc_cpumask_var(&mask, GFP_KERNEL))
+	if (!zalloc_cpumask_var(&mask, GFP_KERNEL))
 		return -ENOMEM;
 
 	ret = sched_getaffinity(pid, mask);
 	if (ret == 0) {
 		unsigned int retlen = min(len, cpumask_size());
 
-		if (copy_to_user(user_mask_ptr, mask, retlen))
+		if (copy_to_user(user_mask_ptr, cpumask_bits(mask), retlen))
 			ret = -EFAULT;
 		else
 			ret = retlen;
@@ -6872,8 +7206,12 @@ int cpuset_cpumask_can_shrink(const struct cpumask *cur,
 	return ret;
 }
 
+<<<<<<< HEAD
 int task_can_attach(struct task_struct *p,
 		    const struct cpumask *cs_effective_cpus)
+=======
+int task_can_attach(struct task_struct *p)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	int ret = 0;
 
@@ -6886,11 +7224,10 @@ int task_can_attach(struct task_struct *p,
 	 * success of set_cpus_allowed_ptr() on all attached tasks
 	 * before cpus_mask may be changed.
 	 */
-	if (p->flags & PF_NO_SETAFFINITY) {
+	if (p->flags & PF_NO_SETAFFINITY)
 		ret = -EINVAL;
-		goto out;
-	}
 
+<<<<<<< HEAD
 	if (dl_task(p) && !cpumask_intersects(task_rq(p)->rd->span,
 					      cs_effective_cpus)) {
 		int cpu = cpumask_any_and(cpu_active_mask, cs_effective_cpus);
@@ -6901,6 +7238,8 @@ int task_can_attach(struct task_struct *p,
 	}
 
 out:
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	return ret;
 }
 
@@ -7007,9 +7346,56 @@ static struct task_struct *__pick_migrate_task(struct rq *rq)
 	BUG();
 }
 
+#ifdef CONFIG_CPU_ISOLATION_OPT
 /*
- * Migrate all tasks from the rq, sleeping tasks will be migrated by
- * try_to_wake_up()->select_task_rq().
+ * Remove a task from the runqueue and pretend that it's migrating. This
+ * should prevent migrations for the detached task and disallow further
+ * changes to tsk_cpus_allowed.
+ */
+static void
+detach_one_task_core(struct task_struct *p, struct rq *rq,
+		     struct list_head *tasks)
+{
+	lockdep_assert_held(&rq->lock);
+
+	p->on_rq = TASK_ON_RQ_MIGRATING;
+	deactivate_task(rq, p, 0);
+	list_add(&p->se.group_node, tasks);
+}
+
+static void attach_tasks_core(struct list_head *tasks, struct rq *rq)
+{
+	struct task_struct *p;
+
+	lockdep_assert_held(&rq->lock);
+
+	while (!list_empty(tasks)) {
+		p = list_first_entry(tasks, struct task_struct, se.group_node);
+		list_del_init(&p->se.group_node);
+
+		BUG_ON(task_rq(p) != rq);
+		activate_task(rq, p, 0);
+		p->on_rq = TASK_ON_RQ_QUEUED;
+	}
+}
+
+#else
+
+static void
+detach_one_task_core(struct task_struct *p, struct rq *rq,
+		     struct list_head *tasks)
+{
+}
+
+static void attach_tasks_core(struct list_head *tasks, struct rq *rq)
+{
+}
+
+#endif /* CONFIG_CPU_ISOLATION_OPT */
+
+/*
+ * Migrate all tasks (not pinned if pinned argument say so) from the rq,
+ * sleeping tasks will be migrated by try_to_wake_up()->select_task_rq().
  *
  * Called with rq->lock held even though we'er in stop_machine() and
  * there's no concurrency possible, we hold the required locks anyway
@@ -7017,13 +7403,27 @@ static struct task_struct *__pick_migrate_task(struct rq *rq)
  *
  * force: if false, the function will skip CPU pinned kthreads.
  */
+<<<<<<< HEAD
 static void migrate_tasks(struct rq *dead_rq, struct rq_flags *rf, bool force)
+=======
+void migrate_tasks(struct rq *dead_rq, struct rq_flags *rf,
+			  bool migrate_pinned_tasks)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	struct rq *rq = dead_rq;
 	struct task_struct *next, *tmp, *stop = rq->stop;
 	LIST_HEAD(percpu_kthreads);
 	struct rq_flags orf = *rf;
 	int dest_cpu;
+	unsigned int num_pinned_kthreads = 1; /* this thread */
+	LIST_HEAD(tasks);
+	cpumask_t avail_cpus;
+
+#ifdef CONFIG_CPU_ISOLATION_OPT
+	cpumask_andnot(&avail_cpus, cpu_online_mask, cpu_isolated_mask);
+#else
+	cpumask_copy(&avail_cpus, cpu_online_mask);
+#endif
 
 	/*
 	 * Fudge the rq selection such that the below task selection loop
@@ -7051,12 +7451,19 @@ static void migrate_tasks(struct rq *dead_rq, struct rq_flags *rf, bool force)
 	for (;;) {
 		/*
 		 * There's this thread running, bail when that's the only
-		 * remaining thread:
+		 * remaining thread.
 		 */
 		if (rq->nr_running == 1)
 			break;
 
 		next = __pick_migrate_task(rq);
+
+		if (!migrate_pinned_tasks && next->flags & PF_KTHREAD &&
+			!cpumask_intersects(&avail_cpus, &next->cpus_mask)) {
+			detach_one_task_core(next, rq, &tasks);
+			num_pinned_kthreads += 1;
+			continue;
+		}
 
 		/*
 		 * Argh ... no iterator for tasks, we need to remove the
@@ -7084,13 +7491,19 @@ static void migrate_tasks(struct rq *dead_rq, struct rq_flags *rf, bool force)
 		rq_unlock(rq, rf);
 		raw_spin_lock(&next->pi_lock);
 		rq_relock(rq, rf);
+		if (!(rq->clock_update_flags & RQCF_UPDATED))
+			update_rq_clock(rq);
 
 		/*
 		 * Since we're inside stop-machine, _nothing_ should have
 		 * changed the task, WARN if weird stuff happened, because in
 		 * that case the above rq->lock drop is a fail too.
+		 * However, during cpu isolation the load balancer might have
+		 * interferred since we don't stop all CPUs. Ignore warning for
+		 * this case.
 		 */
 		if (task_rq(next) != rq || !task_on_rq_queued(next)) {
+<<<<<<< HEAD
 			/*
 			 * In the !force case, there is a hole between
 			 * rq_unlock() and rq_relock(), where another CPU might
@@ -7098,18 +7511,27 @@ static void migrate_tasks(struct rq *dead_rq, struct rq_flags *rf, bool force)
 			 * move tasks around.
 			 */
 			WARN_ON(force);
+=======
+			WARN_ON(migrate_pinned_tasks);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			raw_spin_unlock(&next->pi_lock);
 			continue;
 		}
 
 		/* Find suitable destination for @next, with force if needed. */
+#ifdef CONFIG_CPU_ISOLATION_OPT
+		dest_cpu = select_fallback_rq(dead_rq->cpu, next, false);
+#else
 		dest_cpu = select_fallback_rq(dead_rq->cpu, next);
+#endif
 		rq = __migrate_task(rq, rf, next, dest_cpu);
 		if (rq != dead_rq) {
 			rq_unlock(rq, rf);
 			rq = dead_rq;
 			*rf = orf;
 			rq_relock(rq, rf);
+			if (!(rq->clock_update_flags & RQCF_UPDATED))
+				update_rq_clock(rq);
 		}
 		raw_spin_unlock(&next->pi_lock);
 	}
@@ -7123,8 +7545,12 @@ static void migrate_tasks(struct rq *dead_rq, struct rq_flags *rf, bool force)
 	}
 
 	rq->stop = stop;
+
+	if (num_pinned_kthreads > 1)
+		attach_tasks_core(&tasks, rq);
 }
 
+<<<<<<< HEAD
 static int drain_rq_cpu_stop(void *data)
 {
 	struct rq *rq = this_rq();
@@ -7158,6 +7584,266 @@ void sched_cpu_drain_rq_wait(unsigned int cpu)
 	if (rq_drain->done)
 		cpu_stop_work_wait(rq_drain);
 }
+=======
+#ifdef CONFIG_SCHED_EAS
+static void clear_eas_migration_request(int cpu)
+{
+	struct rq *rq = cpu_rq(cpu);
+	unsigned long flags;
+
+	clear_reserved(cpu);
+	if (rq->push_task) {
+		struct task_struct *push_task = NULL;
+
+		raw_spin_lock_irqsave(&rq->lock, flags);
+		if (rq->push_task) {
+			clear_reserved(rq->push_cpu);
+			push_task = rq->push_task;
+			rq->push_task = NULL;
+		}
+		rq->active_balance = 0;
+		raw_spin_unlock_irqrestore(&rq->lock, flags);
+		if (push_task)
+			put_task_struct(push_task);
+	}
+}
+#else
+static inline void clear_eas_migration_request(int cpu) {}
+#endif
+
+#ifdef CONFIG_CPU_ISOLATION_OPT
+int do_isolation_work_cpu_stop(void *data)
+{
+	unsigned int cpu = smp_processor_id();
+	struct rq *rq = cpu_rq(cpu);
+	struct rq_flags rf;
+
+	watchdog_disable(cpu);
+
+	local_irq_disable();
+
+	irq_migrate_all_off_this_cpu();
+
+	flush_smp_call_function_from_idle();
+
+	/* Update our root-domain */
+	rq_lock(rq, &rf);
+
+	/*
+	 * Temporarily mark the rq as offline. This will allow us to
+	 * move tasks off the CPU.
+	 */
+	if (rq->rd) {
+		BUG_ON(!cpumask_test_cpu(cpu, rq->rd->span));
+		set_rq_offline(rq);
+	}
+
+	migrate_tasks(rq, &rf, false);
+
+	if (rq->rd)
+		set_rq_online(rq);
+	rq_unlock(rq, &rf);
+
+	clear_eas_migration_request(cpu);
+	local_irq_enable();
+	return 0;
+}
+
+int do_unisolation_work_cpu_stop(void *data)
+{
+	watchdog_enable(smp_processor_id());
+	return 0;
+}
+
+static void sched_update_group_capacities(int cpu)
+{
+	struct sched_domain *sd;
+
+	mutex_lock(&sched_domains_mutex);
+	rcu_read_lock();
+
+	for_each_domain(cpu, sd) {
+		int balance_cpu = group_balance_cpu(sd->groups);
+
+		init_sched_groups_capacity(cpu, sd);
+		/*
+		 * Need to ensure this is also called with balancing
+		 * cpu.
+		 */
+		if (cpu != balance_cpu)
+			init_sched_groups_capacity(balance_cpu, sd);
+	}
+
+	rcu_read_unlock();
+	mutex_unlock(&sched_domains_mutex);
+}
+
+static unsigned int cpu_isolation_vote[NR_CPUS];
+
+int sched_isolate_count(const cpumask_t *mask, bool include_offline)
+{
+	cpumask_t count_mask = CPU_MASK_NONE;
+
+	if (include_offline) {
+		cpumask_complement(&count_mask, cpu_online_mask);
+		cpumask_or(&count_mask, &count_mask, cpu_isolated_mask);
+		cpumask_and(&count_mask, &count_mask, mask);
+	} else {
+		cpumask_and(&count_mask, mask, cpu_isolated_mask);
+	}
+
+	return cpumask_weight(&count_mask);
+}
+
+/*
+ * 1) CPU is isolated and cpu is offlined:
+ *	Unisolate the core.
+ * 2) CPU is not isolated and CPU is offlined:
+ *	No action taken.
+ * 3) CPU is offline and request to isolate
+ *	Request ignored.
+ * 4) CPU is offline and isolated:
+ *	Not a possible state.
+ * 5) CPU is online and request to isolate
+ *	Normal case: Isolate the CPU
+ * 6) CPU is not isolated and comes back online
+ *	Nothing to do
+ *
+ * Note: The client calling sched_isolate_cpu() is repsonsible for ONLY
+ * calling sched_unisolate_cpu() on a CPU that the client previously isolated.
+ * Client is also responsible for unisolating when a core goes offline
+ * (after CPU is marked offline).
+ */
+int sched_isolate_cpu(int cpu)
+{
+	struct rq *rq;
+	cpumask_t avail_cpus;
+	int ret_code = 0;
+	u64 start_time = 0;
+
+	if (trace_sched_isolate_enabled())
+		start_time = sched_clock();
+
+	cpu_maps_update_begin();
+
+	cpumask_andnot(&avail_cpus, cpu_online_mask, cpu_isolated_mask);
+
+	if (cpu < 0 || cpu >= nr_cpu_ids || !cpu_possible(cpu) ||
+				!cpu_online(cpu) || cpu >= NR_CPUS) {
+		ret_code = -EINVAL;
+		goto out;
+	}
+
+	rq = cpu_rq(cpu);
+
+	if (++cpu_isolation_vote[cpu] > 1)
+		goto out;
+
+	/* We cannot isolate ALL cpus in the system */
+	if (cpumask_weight(&avail_cpus) == 1) {
+		--cpu_isolation_vote[cpu];
+		ret_code = -EINVAL;
+		goto out;
+	}
+
+	/*
+	 * There is a race between watchdog being enabled by hotplug and
+	 * core isolation disabling the watchdog. When a CPU is hotplugged in
+	 * and the hotplug lock has been released the watchdog thread might
+	 * not have run yet to enable the watchdog.
+	 * We have to wait for the watchdog to be enabled before proceeding.
+	 */
+	if (!watchdog_configured(cpu)) {
+		msleep(20);
+		if (!watchdog_configured(cpu)) {
+			--cpu_isolation_vote[cpu];
+			ret_code = -EBUSY;
+			goto out;
+		}
+	}
+
+	set_cpu_isolated(cpu, true);
+	cpumask_clear_cpu(cpu, &avail_cpus);
+
+	/* Migrate timers */
+	smp_call_function_any(&avail_cpus, hrtimer_quiesce_cpu, &cpu, 1);
+	smp_call_function_any(&avail_cpus, timer_quiesce_cpu, &cpu, 1);
+
+	watchdog_disable(cpu);
+	irq_lock_sparse();
+	stop_cpus(cpumask_of(cpu), do_isolation_work_cpu_stop, 0);
+	irq_unlock_sparse();
+
+	calc_load_migrate(rq);
+	update_max_interval();
+	sched_update_group_capacities(cpu);
+
+out:
+	cpu_maps_update_done();
+	trace_sched_isolate(cpu, cpumask_bits(cpu_isolated_mask)[0],
+			    start_time, 1);
+	return ret_code;
+}
+
+/*
+ * Note: The client calling sched_isolate_cpu() is repsonsible for ONLY
+ * calling sched_unisolate_cpu() on a CPU that the client previously isolated.
+ * Client is also responsible for unisolating when a core goes offline
+ * (after CPU is marked offline).
+ */
+int sched_unisolate_cpu_unlocked(int cpu)
+{
+	int ret_code = 0;
+	u64 start_time = 0;
+
+	if (cpu < 0 || cpu >= nr_cpu_ids || !cpu_possible(cpu)
+						|| cpu >= NR_CPUS) {
+		ret_code = -EINVAL;
+		goto out;
+	}
+
+	if (trace_sched_isolate_enabled())
+		start_time = sched_clock();
+
+	if (!cpu_isolation_vote[cpu]) {
+		ret_code = -EINVAL;
+		goto out;
+	}
+
+	if (--cpu_isolation_vote[cpu])
+		goto out;
+
+	set_cpu_isolated(cpu, false);
+	update_max_interval();
+	sched_update_group_capacities(cpu);
+
+	if (cpu_online(cpu)) {
+		stop_cpus(cpumask_of(cpu), do_unisolation_work_cpu_stop, 0);
+
+		/* Kick CPU to immediately do load balancing */
+		if (!atomic_fetch_or(NOHZ_KICK_MASK, nohz_flags(cpu)))
+			smp_send_reschedule(cpu);
+	}
+
+out:
+	trace_sched_isolate(cpu, cpumask_bits(cpu_isolated_mask)[0],
+			    start_time, 0);
+	return ret_code;
+}
+
+int sched_unisolate_cpu(int cpu)
+{
+	int ret_code;
+
+	cpu_maps_update_begin();
+	ret_code = sched_unisolate_cpu_unlocked(cpu);
+	cpu_maps_update_done();
+	return ret_code;
+}
+
+#endif /* CONFIG_CPU_ISOLATION_OPT */
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #endif /* CONFIG_HOTPLUG_CPU */
 
 void set_rq_online(struct rq *rq)
@@ -7228,7 +7914,11 @@ static void cpuset_cpu_active(void)
 static int cpuset_cpu_inactive(unsigned int cpu)
 {
 	if (!cpuhp_tasks_frozen) {
+<<<<<<< HEAD
 		int ret = dl_cpu_busy(cpu, NULL);
+=======
+		int ret = dl_bw_check_overflow(cpu);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 		if (ret)
 			return ret;
@@ -7365,6 +8055,11 @@ int sched_cpus_deactivate_nosync(struct cpumask *cpus)
 static void sched_rq_cpu_starting(unsigned int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&rq->lock, flags);
+	set_window_start(rq);
+	raw_spin_unlock_irqrestore(&rq->lock, flags);
 
 	rq->calc_load_update = calc_load_update;
 }
@@ -7373,7 +8068,11 @@ int sched_cpu_starting(unsigned int cpu)
 {
 	sched_rq_cpu_starting(cpu);
 	sched_tick_start(cpu);
+<<<<<<< HEAD
 	trace_android_rvh_sched_cpu_starting(cpu);
+=======
+	clear_eas_migration_request(cpu);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	return 0;
 }
 
@@ -7387,6 +8086,7 @@ int sched_cpu_dying(unsigned int cpu)
 	sched_tick_stop(cpu);
 
 	rq_lock_irqsave(rq, &rf);
+
 	if (rq->rd) {
 		BUG_ON(!cpumask_test_cpu(cpu, rq->rd->span));
 		set_rq_offline(rq);
@@ -7395,7 +8095,11 @@ int sched_cpu_dying(unsigned int cpu)
 	BUG_ON(rq->nr_running != 1);
 	rq_unlock_irqrestore(rq, &rf);
 
+<<<<<<< HEAD
 	trace_android_rvh_sched_cpu_dying(cpu);
+=======
+	clear_eas_migration_request(cpu);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	calc_load_migrate(rq);
 	nohz_balance_exit_idle(rq);
@@ -7416,6 +8120,8 @@ void __init sched_init_smp(void)
 	mutex_lock(&sched_domains_mutex);
 	sched_init_domains(cpu_active_mask);
 	mutex_unlock(&sched_domains_mutex);
+
+	update_cluster_topology();
 
 	/* Move init over to a non-isolated CPU */
 	if (set_cpus_allowed_ptr(current, housekeeping_cpumask(HK_FLAG_DOMAIN)) < 0)
@@ -7481,6 +8187,8 @@ void __init sched_init(void)
 #endif
 
 	wait_bit_init();
+
+	init_clusters();
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	ptr += 2 * nr_cpu_ids * sizeof(void **);
@@ -7593,6 +8301,7 @@ void __init sched_init(void)
 		rq->idle_stamp = 0;
 		rq->avg_idle = 2*sysctl_sched_migration_cost;
 		rq->max_idle_balance_cost = sysctl_sched_migration_cost;
+		walt_sched_init_rq(rq);
 
 		INIT_LIST_HEAD(&rq->cfs_tasks);
 
@@ -7608,6 +8317,10 @@ void __init sched_init(void)
 		atomic_set(&rq->nr_iowait, 0);
 	}
 
+<<<<<<< HEAD
+=======
+	BUG_ON(alloc_related_thread_groups());
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	set_load_weight(&init_task);
 
 	/*
@@ -7623,6 +8336,11 @@ void __init sched_init(void)
 	 * when this runqueue becomes "idle".
 	 */
 	init_idle(current, smp_processor_id());
+	init_new_task_load(current);
+
+#ifdef CONIG_QOS_CTRL
+	init_task_qos(current);
+#endif
 
 	calc_load_update = jiffies + LOAD_FREQ;
 
@@ -8010,6 +8728,11 @@ cpu_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 	if (IS_ERR(tg))
 		return ERR_PTR(-ENOMEM);
 
+#ifdef CONFIG_SCHED_RTG_CGROUP
+	tg->colocate = false;
+	tg->colocate_update_disabled = false;
+#endif
+
 	return &tg->css;
 }
 
@@ -8103,6 +8826,25 @@ static int cpu_cgroup_can_attach(struct cgroup_taskset *tset)
 	return ret;
 }
 
+#if defined(CONFIG_UCLAMP_TASK_GROUP) && defined(CONFIG_SCHED_RTG_CGROUP)
+static void schedgp_attach(struct cgroup_taskset *tset)
+{
+	struct task_struct *task;
+	struct cgroup_subsys_state *css;
+	bool colocate;
+	struct task_group *tg;
+
+	cgroup_taskset_first(tset, &css);
+	tg = css_tg(css);
+
+	colocate = tg->colocate;
+
+	cgroup_taskset_for_each(task, css, tset)
+		sync_cgroup_colocation(task, colocate);
+}
+#else
+static void schedgp_attach(struct cgroup_taskset *tset) { }
+#endif
 static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 {
 	struct task_struct *task;
@@ -8111,7 +8853,11 @@ static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 	cgroup_taskset_for_each(task, css, tset)
 		sched_move_task(task);
 
+<<<<<<< HEAD
 	trace_android_rvh_cpu_cgroup_attach(tset);
+=======
+	schedgp_attach(tset);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
@@ -8290,6 +9036,7 @@ static int cpu_uclamp_max_show(struct seq_file *sf, void *v)
 	return 0;
 }
 
+<<<<<<< HEAD
 static int cpu_uclamp_ls_write_u64(struct cgroup_subsys_state *css,
 				   struct cftype *cftype, u64 ls)
 {
@@ -8310,6 +9057,31 @@ static u64 cpu_uclamp_ls_read_u64(struct cgroup_subsys_state *css,
 
 	return (u64) tg->latency_sensitive;
 }
+=======
+#ifdef CONFIG_SCHED_RTG_CGROUP
+static u64 sched_colocate_read(struct cgroup_subsys_state *css,
+				struct cftype *cft)
+{
+	struct task_group *tg = css_tg(css);
+
+	return (u64) tg->colocate;
+}
+
+static int sched_colocate_write(struct cgroup_subsys_state *css,
+				struct cftype *cft, u64 colocate)
+{
+	struct task_group *tg = css_tg(css);
+
+	if (tg->colocate_update_disabled)
+		return -EPERM;
+
+	tg->colocate = !!colocate;
+	tg->colocate_update_disabled = true;
+
+	return 0;
+}
+#endif /* CONFIG_SCHED_RTG_CGROUP */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #endif /* CONFIG_UCLAMP_TASK_GROUP */
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -8678,12 +9450,23 @@ static struct cftype cpu_legacy_files[] = {
 		.seq_show = cpu_uclamp_max_show,
 		.write = cpu_uclamp_max_write,
 	},
+<<<<<<< HEAD
 	{
 		.name = "uclamp.latency_sensitive",
 		.flags = CFTYPE_NOT_ON_ROOT,
 		.read_u64 = cpu_uclamp_ls_read_u64,
 		.write_u64 = cpu_uclamp_ls_write_u64,
 	},
+=======
+#ifdef CONFIG_SCHED_RTG_CGROUP
+	{
+		.name = "uclamp.colocate",
+		.flags = CFTYPE_NOT_ON_ROOT,
+		.read_u64 = sched_colocate_read,
+		.write_u64 = sched_colocate_write,
+	},
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #endif
 	{ }	/* Terminate */
 };
@@ -8939,7 +9722,68 @@ const u32 sched_prio_to_wmult[40] = {
  /*  15 */ 119304647, 148102320, 186737708, 238609294, 286331153,
 };
 
+#ifdef CONFIG_SCHED_LATENCY_NICE
+/*
+ * latency weight for wakeup preemption
+ */
+const int sched_latency_to_weight[40] = {
+ /* -20 */      1024,       973,       922,       870,       819,
+ /* -15 */       768,       717,       666,       614,       563,
+ /* -10 */       512,       461,       410,       358,       307,
+ /*  -5 */       256,       205,       154,       102,       51,
+ /*   0 */	   0,       -51,      -102,      -154,      -205,
+ /*   5 */      -256,      -307,      -358,      -410,      -461,
+ /*  10 */      -512,      -563,      -614,      -666,      -717,
+ /*  15 */      -768,      -819,      -870,      -922,      -973,
+};
+#endif
+
 void call_trace_sched_update_nr_running(struct rq *rq, int count)
 {
         trace_sched_update_nr_running_tp(rq, count);
 }
+
+#ifdef CONFIG_SCHED_WALT
+/*
+ * sched_exit() - Set EXITING_TASK_MARKER in task's ravg.demand field
+ *
+ * Stop accounting (exiting) task's future cpu usage
+ *
+ * We need this so that reset_all_windows_stats() can function correctly.
+ * reset_all_window_stats() depends on do_each_thread/for_each_thread task
+ * iterators to reset *all* task's statistics. Exiting tasks however become
+ * invisible to those iterators. sched_exit() is called on a exiting task prior
+ * to being removed from task_list, which will let reset_all_window_stats()
+ * function correctly.
+ */
+void sched_exit(struct task_struct *p)
+{
+	struct rq_flags rf;
+	struct rq *rq;
+	u64 wallclock;
+
+#ifdef CONFIG_SCHED_RTG
+	sched_set_group_id(p, 0);
+#endif
+
+	rq = task_rq_lock(p, &rf);
+
+	/* rq->curr == p */
+	wallclock = sched_ktime_clock();
+	update_task_ravg(rq->curr, rq, TASK_UPDATE, wallclock, 0);
+	dequeue_task(rq, p, 0);
+	/*
+	 * task's contribution is already removed from the
+	 * cumulative window demand in dequeue. As the
+	 * task's stats are reset, the next enqueue does
+	 * not change the cumulative window demand.
+	 */
+	reset_task_stats(p);
+	p->ravg.mark_start = wallclock;
+	p->ravg.sum_history[0] = EXITING_TASK_MARKER;
+
+	enqueue_task(rq, p, 0);
+	task_rq_unlock(rq, p, &rf);
+	free_task_load_ptrs(p);
+}
+#endif /* CONFIG_SCHED_WALT */

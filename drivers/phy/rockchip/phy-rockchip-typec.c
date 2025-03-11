@@ -1324,7 +1324,53 @@ static void tcphy_phy_deinit(struct rockchip_typec_phy *tcphy)
 
 static int tcphy_get_mode(struct rockchip_typec_phy *tcphy)
 {
+<<<<<<< HEAD
 	return tcphy->new_mode;
+=======
+	struct extcon_dev *edev = tcphy->extcon;
+	union extcon_property_value property;
+	unsigned int id;
+	u8 mode;
+	int ret, ufp, dp;
+
+	if (!edev)
+		return MODE_DFP_USB;
+
+	ufp = extcon_get_state(edev, EXTCON_USB);
+	dp = extcon_get_state(edev, EXTCON_DISP_DP);
+
+	mode = MODE_DFP_USB;
+	id = EXTCON_USB_HOST;
+
+	if (ufp) {
+		mode = MODE_UFP_USB;
+		id = EXTCON_USB;
+	} else if (dp) {
+		mode = MODE_DFP_DP;
+		id = EXTCON_DISP_DP;
+
+		ret = extcon_get_property(edev, id, EXTCON_PROP_USB_SS,
+					  &property);
+		if (ret) {
+			dev_err(tcphy->dev, "get superspeed property failed\n");
+			return ret;
+		}
+
+		if (property.intval)
+			mode |= MODE_DFP_USB;
+	}
+
+	ret = extcon_get_property(edev, id, EXTCON_PROP_USB_TYPEC_POLARITY,
+				  &property);
+	if (ret) {
+		dev_err(tcphy->dev, "get polarity property failed\n");
+		return ret;
+	}
+
+	tcphy->flip = property.intval ? 1 : 0;
+
+	return mode;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 static int tcphy_orien_sw_set(struct typec_switch *sw,

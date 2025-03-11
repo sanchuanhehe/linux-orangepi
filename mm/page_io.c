@@ -369,7 +369,10 @@ int swap_readpage(struct page *page, bool synchronous)
 	if (sis->flags & SWP_SYNCHRONOUS_IO) {
 		ret = bdev_read_page(sis->bdev, swap_page_sector(page), page);
 		if (!ret) {
+<<<<<<< HEAD
 			trace_android_vh_count_pswpin(sis);
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			count_vm_event(PSWPIN);
 			goto out;
 		}

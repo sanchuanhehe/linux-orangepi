@@ -7,6 +7,7 @@
  */
 #include <linux/fs.h>
 #include <linux/module.h>
+#include <linux/mount.h>
 #include <linux/backing-dev.h>
 #include <linux/init.h>
 #include <linux/f2fs_fs.h>
@@ -97,9 +98,15 @@ static int gc_thread_func(void *data)
 		}
 
 		if (foreground) {
+<<<<<<< HEAD
 			f2fs_down_write(&sbi->gc_lock);
 			goto do_gc;
 		} else if (!f2fs_down_write_trylock(&sbi->gc_lock)) {
+=======
+			down_write(&sbi->gc_lock);
+			goto do_gc;
+		} else if (!down_write_trylock(&sbi->gc_lock)) {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			stat_other_skip_bggc_count(sbi);
 			goto next;
 		}
@@ -1000,7 +1007,11 @@ static bool is_alive(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 {
 	struct page *node_page;
 	nid_t nid;
+<<<<<<< HEAD
 	unsigned int ofs_in_node, max_addrs;
+=======
+	unsigned int ofs_in_node, max_addrs, base;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	block_t source_blkaddr;
 
 	nid = le32_to_cpu(sum->nid);
@@ -1026,11 +1037,26 @@ static bool is_alive(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 		return false;
 	}
 
+<<<<<<< HEAD
 	max_addrs = IS_INODE(node_page) ? DEF_ADDRS_PER_INODE :
 						DEF_ADDRS_PER_BLOCK;
 	if (ofs_in_node >= max_addrs) {
 		f2fs_err(sbi, "Inconsistent ofs_in_node:%u in summary, ino:%u, nid:%u, max:%u",
 			ofs_in_node, dni->ino, dni->nid, max_addrs);
+=======
+	if (IS_INODE(node_page)) {
+		base = offset_in_addr(F2FS_INODE(node_page));
+		max_addrs = DEF_ADDRS_PER_INODE;
+	} else {
+		base = 0;
+		max_addrs = DEF_ADDRS_PER_BLOCK;
+	}
+
+	if (base + ofs_in_node >= max_addrs) {
+		f2fs_err(sbi, "Inconsistent blkaddr offset: base:%u, ofs_in_node:%u, max:%u, ino:%u, nid:%u",
+			base, ofs_in_node, max_addrs, dni->ino, dni->nid);
+		f2fs_put_page(node_page, 1);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		return false;
 	}
 
@@ -1045,9 +1071,15 @@ static bool is_alive(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 
 		if (unlikely(check_valid_map(sbi, segno, offset))) {
 			if (!test_and_set_bit(segno, SIT_I(sbi)->invalid_segmap)) {
+<<<<<<< HEAD
 				f2fs_err(sbi, "mismatched blkaddr %u (source_blkaddr %u) in seg %u",
 					 blkaddr, source_blkaddr, segno);
 				f2fs_bug_on(sbi, 1);
+=======
+				f2fs_err(sbi, "mismatched blkaddr %u (source_blkaddr %u) in seg %u\n",
+						blkaddr, source_blkaddr, segno);
+				set_sbi_flag(sbi, SBI_NEED_FSCK);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			}
 		}
 #endif
@@ -1259,7 +1291,7 @@ static int move_data_block(struct inode *inode, block_t bidx,
 
 	/* allocate block address */
 	f2fs_allocate_data_block(fio.sbi, NULL, fio.old_blkaddr, &newaddr,
-				&sum, type, NULL);
+				&sum, type, NULL, SEQ_NONE);
 
 	fio.encrypted_page = f2fs_pagecache_get_page(META_MAPPING(fio.sbi),
 				newaddr, FGP_LOCK | FGP_CREAT, GFP_NOFS);
@@ -1466,7 +1498,13 @@ next_step:
 
 		if (phase == 3) {
 			inode = f2fs_iget(sb, dni.ino);
+<<<<<<< HEAD
 			if (IS_ERR(inode) || is_bad_inode(inode))
+=======
+			if (IS_ERR(inode) || is_bad_inode(inode) ||
+					special_file(inode->i_mode)) {
+				set_sbi_flag(sbi, SBI_NEED_FSCK);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 				continue;
 
 			if (!f2fs_down_write_trylock(
@@ -1672,8 +1710,9 @@ freed:
 				get_valid_blocks(sbi, segno, false) == 0)
 			seg_freed++;
 
-		if (__is_large_section(sbi) && segno + 1 < end_segno)
-			sbi->next_victim_seg[gc_type] = segno + 1;
+		if (__is_large_section(sbi))
+			sbi->next_victim_seg[gc_type] =
+				(segno + 1 < end_segno) ? segno + 1 : NULL_SEGNO;
 skip:
 		f2fs_put_page(sum_page, 0);
 	}
@@ -1991,8 +2030,9 @@ static void update_fs_metadata(struct f2fs_sb_info *sbi, int secs)
 	}
 }
 
-int f2fs_resize_fs(struct f2fs_sb_info *sbi, __u64 block_count)
+int f2fs_resize_fs(struct file *filp, __u64 block_count)
 {
+	struct f2fs_sb_info *sbi = F2FS_I_SB(file_inode(filp));
 	__u64 old_block_count, shrunk_blocks;
 	struct cp_control cpc = { CP_RESIZE, 0, 0, 0 };
 	unsigned int secs;
@@ -2030,12 +2070,23 @@ int f2fs_resize_fs(struct f2fs_sb_info *sbi, __u64 block_count)
 		return -EINVAL;
 	}
 
+	err = mnt_want_write_file(filp);
+	if (err)
+		return err;
+
 	shrunk_blocks = old_block_count - block_count;
 	secs = div_u64(shrunk_blocks, BLKS_PER_SEC(sbi));
 
 	/* stop other GC */
+<<<<<<< HEAD
 	if (!f2fs_down_write_trylock(&sbi->gc_lock))
 		return -EAGAIN;
+=======
+	if (!down_write_trylock(&sbi->gc_lock)) {
+		err = -EAGAIN;
+		goto out_drop_write;
+	}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	/* stop CP to protect MAIN_SEC in free_segment_range */
 	f2fs_lock_op(sbi);
@@ -2054,15 +2105,30 @@ int f2fs_resize_fs(struct f2fs_sb_info *sbi, __u64 block_count)
 
 out_unlock:
 	f2fs_unlock_op(sbi);
+<<<<<<< HEAD
 	f2fs_up_write(&sbi->gc_lock);
+=======
+	up_write(&sbi->gc_lock);
+out_drop_write:
+	mnt_drop_write_file(filp);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (err)
 		return err;
 
-	set_sbi_flag(sbi, SBI_IS_RESIZEFS);
-
 	freeze_super(sbi->sb);
+<<<<<<< HEAD
 	f2fs_down_write(&sbi->gc_lock);
 	f2fs_down_write(&sbi->cp_global_sem);
+=======
+
+	if (f2fs_readonly(sbi->sb)) {
+		thaw_super(sbi->sb);
+		return -EROFS;
+	}
+
+	down_write(&sbi->gc_lock);
+	mutex_lock(&sbi->cp_mutex);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	spin_lock(&sbi->stat_lock);
 	if (shrunk_blocks + valid_user_blocks(sbi) +
@@ -2075,6 +2141,7 @@ out_unlock:
 	if (err)
 		goto out_err;
 
+	set_sbi_flag(sbi, SBI_IS_RESIZEFS);
 	err = free_segment_range(sbi, secs, false);
 	if (err)
 		goto recover_out;
@@ -2098,6 +2165,7 @@ out_unlock:
 		f2fs_commit_super(sbi, false);
 	}
 recover_out:
+	clear_sbi_flag(sbi, SBI_IS_RESIZEFS);
 	if (err) {
 		set_sbi_flag(sbi, SBI_NEED_FSCK);
 		f2fs_err(sbi, "resize_fs failed, should run fsck to repair!");
@@ -2110,6 +2178,5 @@ out_err:
 	f2fs_up_write(&sbi->cp_global_sem);
 	f2fs_up_write(&sbi->gc_lock);
 	thaw_super(sbi->sb);
-	clear_sbi_flag(sbi, SBI_IS_RESIZEFS);
 	return err;
 }

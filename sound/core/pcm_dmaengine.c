@@ -137,6 +137,7 @@ static void dmaengine_pcm_dma_complete(void *arg)
 	struct snd_pcm_substream *substream = arg;
 	struct dmaengine_pcm_runtime_data *prtd;
 
+<<<<<<< HEAD
 	snd_pcm_stream_lock_irq(substream);
 	if (PCM_RUNTIME_CHECK(substream)) {
 		snd_pcm_stream_unlock_irq(substream);
@@ -145,11 +146,16 @@ static void dmaengine_pcm_dma_complete(void *arg)
 
 	prtd = substream_to_prtd(substream);
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	new_pos = prtd->pos + snd_pcm_lib_period_bytes(substream);
 	if (new_pos >= snd_pcm_lib_buffer_bytes(substream))
 		new_pos = 0;
 	prtd->pos = new_pos;
+<<<<<<< HEAD
 	snd_pcm_stream_unlock_irq(substream);
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	snd_pcm_period_elapsed(substream);
 }

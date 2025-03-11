@@ -5,6 +5,7 @@
 #include <linux/mm_types_task.h>
 
 #include <linux/auxvec.h>
+#include <linux/kref.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
 #include <linux/rbtree.h>
@@ -15,7 +16,11 @@
 #include <linux/page-flags-layout.h>
 #include <linux/workqueue.h>
 #include <linux/seqlock.h>
+<<<<<<< HEAD
 #include <linux/android_kabi.h>
+=======
+#include <linux/xpm_types.h>
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 #include <asm/mmu.h>
 
@@ -299,6 +304,12 @@ struct vm_userfaultfd_ctx {
 struct vm_userfaultfd_ctx {};
 #endif /* CONFIG_USERFAULTFD */
 
+struct anon_vma_name {
+	struct kref kref;
+	/* The name needs to be at the end because it is dynamically sized. */
+	char name[];
+};
+
 /*
  * This struct describes a virtual memory area. There is one of these
  * per VM-area/task. A VM area is any part of the process virtual memory
@@ -341,15 +352,29 @@ struct vm_area_struct {
 	 * linkage into the address_space->i_mmap interval tree.
 	 *
 	 * For private anonymous mappings, a pointer to a null terminated string
+<<<<<<< HEAD
 	 * in the user process containing the name given to the vma, or NULL
 	 * if unnamed.
 	 */
+=======
+	 * containing the name given to the vma, or NULL if unnamed.
+	 */
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	union {
 		struct {
 			struct rb_node rb;
 			unsigned long rb_subtree_last;
 		} shared;
+<<<<<<< HEAD
 		const char __user *anon_name;
+=======
+		/*
+		 * Serialized by mmap_sem. Never use directly because it is
+		 * valid only when vm_file is NULL. Use anon_vma_name instead.
+		 */
+		struct anon_vma_name *anon_name;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	};
 
 	/*
@@ -427,6 +452,10 @@ struct mm_struct {
 		unsigned long task_size;	/* size of task vm space */
 		unsigned long highest_vm_end;	/* highest vma end address */
 		pgd_t * pgd;
+#ifdef CONFIG_MEM_PURGEABLE
+		void *uxpgd;
+		spinlock_t uxpgd_lock;
+#endif
 
 #ifdef CONFIG_MEMBARRIER
 		/**
@@ -499,6 +528,9 @@ struct mm_struct {
 
 		unsigned long hiwater_rss; /* High-watermark of RSS usage */
 		unsigned long hiwater_vm;  /* High-water virtual memory usage */
+#ifdef CONFIG_RSS_THRESHOLD
+		unsigned long rss_threshold; /* A threshold monitor RSS */
+#endif
 
 		unsigned long total_vm;	   /* Total pages mapped */
 		unsigned long locked_vm;   /* Pages that have PG_mlocked set */
@@ -599,7 +631,17 @@ struct mm_struct {
 		u32 pasid;
 #endif
 
+<<<<<<< HEAD
 		ANDROID_KABI_RESERVE(1);
+=======
+#ifdef CONFIG_SECURITY_XPM
+		struct xpm_region xpm_region;
+#endif
+
+#ifdef CONFIG_SECURITY_CODE_SIGN
+		struct cs_info pcs_info;
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	} __randomize_layout;
 
 	/*

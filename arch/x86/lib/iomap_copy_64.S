@@ -10,6 +10,10 @@
  */
 SYM_FUNC_START(__iowrite32_copy)
 	movl %edx,%ecx
+<<<<<<< HEAD
 	rep movsd
+=======
+	rep movsl
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	RET
 SYM_FUNC_END(__iowrite32_copy)

@@ -726,6 +726,8 @@ static void blk_free_queue_rcu(struct rcu_head *rcu_head)
 {
 	struct request_queue *q = container_of(rcu_head, struct request_queue,
 					       rcu_head);
+
+	percpu_ref_exit(&q->q_usage_counter);
 	kmem_cache_free(blk_requestq_cachep, q);
 }
 
@@ -789,16 +791,6 @@ static void blk_release_queue(struct kobject *kobj)
 	blk_stat_free_callback(q->poll_cb);
 
 	blk_free_queue_stats(q->stats);
-
-	if (queue_is_mq(q)) {
-		struct blk_mq_hw_ctx *hctx;
-		int i;
-
-		cancel_delayed_work_sync(&q->requeue_work);
-
-		queue_for_each_hw_ctx(q, hctx, i)
-			cancel_delayed_work_sync(&hctx->run_work);
-	}
 
 	blk_exit_queue(q);
 
@@ -910,6 +902,9 @@ int blk_register_queue(struct gendisk *disk)
 	blk_queue_flag_set(QUEUE_FLAG_REGISTERED, q);
 	wbt_enable_default(q);
 	blk_throtl_register_queue(q);
+	spin_lock_irq(&q->queue_lock);
+	blk_queue_flag_set(QUEUE_FLAG_THROTL_INIT_DONE, q);
+	spin_unlock_irq(&q->queue_lock);
 
 	/* Now everything is ready and send out KOBJ_ADD uevent */
 	kobject_uevent(&q->kobj, KOBJ_ADD);
@@ -941,6 +936,10 @@ void blk_unregister_queue(struct gendisk *disk)
 	/* Return early if disk->queue was never registered. */
 	if (!blk_queue_registered(q))
 		return;
+
+	spin_lock_irq(&q->queue_lock);
+	blk_queue_flag_clear(QUEUE_FLAG_THROTL_INIT_DONE, q);
+	spin_unlock_irq(&q->queue_lock);
 
 	/*
 	 * Since sysfs_remove_dir() prevents adding new directory entries

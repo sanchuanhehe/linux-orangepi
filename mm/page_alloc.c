@@ -71,8 +71,15 @@
 #include <linux/psi.h>
 #include <linux/padata.h>
 #include <linux/khugepaged.h>
+<<<<<<< HEAD
 #include <trace/hooks/mm.h>
 #include <trace/hooks/vmscan.h>
+=======
+#include <linux/zswapd.h>
+#ifdef CONFIG_RECLAIM_ACCT
+#include <linux/reclaim_acct.h>
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 #include <asm/sections.h>
 #include <asm/tlbflush.h>
@@ -311,7 +318,15 @@ const char * const migratetype_names[MIGRATE_TYPES] = {
 	"Unmovable",
 	"Movable",
 	"Reclaimable",
+<<<<<<< HEAD
 #ifdef CONFIG_CMA
+=======
+#ifdef CONFIG_CMA_REUSE
+	"CMA",
+#endif
+	"HighAtomic",
+#if defined(CONFIG_CMA) && !defined(CONFIG_CMA_REUSE)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	"CMA",
 #endif
 	"HighAtomic",
@@ -2474,19 +2489,21 @@ static inline struct page *__rmqueue_cma_fallback(struct zone *zone,
  * boundary. If alignment is required, use move_freepages_block()
  */
 static int move_freepages(struct zone *zone,
-			  struct page *start_page, struct page *end_page,
+			  unsigned long start_pfn, unsigned long end_pfn,
 			  int migratetype, int *num_movable)
 {
 	struct page *page;
+	unsigned long pfn;
 	unsigned int order;
 	int pages_moved = 0;
 
-	for (page = start_page; page <= end_page;) {
-		if (!pfn_valid_within(page_to_pfn(page))) {
-			page++;
+	for (pfn = start_pfn; pfn <= end_pfn;) {
+		if (!pfn_valid_within(pfn)) {
+			pfn++;
 			continue;
 		}
 
+		page = pfn_to_page(pfn);
 		if (!PageBuddy(page)) {
 			/*
 			 * We assume that pages that could be isolated for
@@ -2496,8 +2513,7 @@ static int move_freepages(struct zone *zone,
 			if (num_movable &&
 					(PageLRU(page) || __PageMovable(page)))
 				(*num_movable)++;
-
-			page++;
+			pfn++;
 			continue;
 		}
 
@@ -2507,7 +2523,7 @@ static int move_freepages(struct zone *zone,
 
 		order = buddy_order(page);
 		move_to_free_list(page, zone, order, migratetype);
-		page += 1 << order;
+		pfn += 1 << order;
 		pages_moved += 1 << order;
 	}
 
@@ -2517,25 +2533,22 @@ static int move_freepages(struct zone *zone,
 int move_freepages_block(struct zone *zone, struct page *page,
 				int migratetype, int *num_movable)
 {
-	unsigned long start_pfn, end_pfn;
-	struct page *start_page, *end_page;
+	unsigned long start_pfn, end_pfn, pfn;
 
 	if (num_movable)
 		*num_movable = 0;
 
-	start_pfn = page_to_pfn(page);
-	start_pfn = start_pfn & ~(pageblock_nr_pages-1);
-	start_page = pfn_to_page(start_pfn);
-	end_page = start_page + pageblock_nr_pages - 1;
+	pfn = page_to_pfn(page);
+	start_pfn = pfn & ~(pageblock_nr_pages - 1);
 	end_pfn = start_pfn + pageblock_nr_pages - 1;
 
 	/* Do not cross zone boundaries */
 	if (!zone_spans_pfn(zone, start_pfn))
-		start_page = page;
+		start_pfn = pfn;
 	if (!zone_spans_pfn(zone, end_pfn))
 		return 0;
 
-	return move_freepages(zone, start_page, end_page, migratetype,
+	return move_freepages(zone, start_pfn, end_pfn, migratetype,
 								num_movable);
 }
 
@@ -2947,6 +2960,27 @@ do_steal:
 
 }
 
+static __always_inline struct page *
+__rmqueue_with_cma_reuse(struct zone *zone, unsigned int order,
+					int migratetype, unsigned int alloc_flags)
+{
+	struct page *page = NULL;
+retry:
+	page = __rmqueue_smallest(zone, order, migratetype);
+
+	if (unlikely(!page) && is_migrate_cma(migratetype)) {
+		migratetype = MIGRATE_MOVABLE;
+		alloc_flags &= ~ALLOC_CMA;
+		page = __rmqueue_smallest(zone, order, migratetype);
+	}
+
+	if (unlikely(!page) &&
+		__rmqueue_fallback(zone, order, migratetype, alloc_flags))
+		goto retry;
+
+	return page;
+}
+
 /*
  * Do the hard work of removing an element from the buddy allocator.
  * Call me with the zone->lock already held.
@@ -2957,6 +2991,28 @@ __rmqueue(struct zone *zone, unsigned int order, int migratetype,
 {
 	struct page *page;
 
+<<<<<<< HEAD
+=======
+#ifdef CONFIG_CMA_REUSE
+	page = __rmqueue_with_cma_reuse(zone, order, migratetype, alloc_flags);
+	goto out;
+#endif
+
+	if (IS_ENABLED(CONFIG_CMA)) {
+		/*
+		 * Balance movable allocations between regular and CMA areas by
+		 * allocating from CMA when over half of the zone's free memory
+		 * is in the CMA area.
+		 */
+		if (alloc_flags & ALLOC_CMA &&
+		    zone_page_state(zone, NR_FREE_CMA_PAGES) >
+		    zone_page_state(zone, NR_FREE_PAGES) / 2) {
+			page = __rmqueue_cma_fallback(zone, order);
+			if (page)
+				goto out;
+		}
+	}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 retry:
 	page = __rmqueue_smallest(zone, order, migratetype);
 
@@ -3585,9 +3641,23 @@ struct page *rmqueue(struct zone *preferred_zone,
 	struct page *page;
 
 	if (likely(order == 0)) {
+<<<<<<< HEAD
 		page = rmqueue_pcplist(preferred_zone, zone, gfp_flags,
 				       migratetype, alloc_flags);
 		goto out;
+=======
+		/*
+		 * MIGRATE_MOVABLE pcplist could have the pages on CMA area and
+		 * we need to skip it when CMA area isn't allowed.
+		 */
+		if (!IS_ENABLED(CONFIG_CMA) || alloc_flags & ALLOC_CMA ||
+				migratetype != MIGRATE_MOVABLE ||
+				IS_ENABLED(CONFIG_CMA_REUSE)) {
+			page = rmqueue_pcplist(preferred_zone, zone, gfp_flags,
+					migratetype, alloc_flags);
+			goto out;
+		}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	}
 
 	/*
@@ -3947,8 +4017,12 @@ static inline unsigned int current_alloc_flags(gfp_t gfp_mask,
 	unsigned int pflags = current->flags;
 
 	if (!(pflags & PF_MEMALLOC_NOCMA) &&
+<<<<<<< HEAD
 			gfp_migratetype(gfp_mask) == MIGRATE_MOVABLE &&
 			gfp_mask & __GFP_CMA)
+=======
+			gfp_migratetype(gfp_mask) == get_cma_migratetype())
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		alloc_flags |= ALLOC_CMA;
 
 #endif
@@ -4564,10 +4638,20 @@ retry:
 	 */
 	if (!page && !drained) {
 		unreserve_highatomic_pageblock(ac, false);
+<<<<<<< HEAD
 		trace_android_vh_drain_all_pages_bypass(gfp_mask, order,
 			alloc_flags, ac->migratetype, *did_some_progress, &skip_pcp_drain);
 		if (!skip_pcp_drain)
 			drain_all_pages(NULL);
+=======
+#ifdef CONFIG_RECLAIM_ACCT
+		reclaimacct_substage_start(RA_DRAINALLPAGES);
+#endif
+		drain_all_pages(NULL);
+#ifdef CONFIG_RECLAIM_ACCT
+		reclaimacct_substage_end(RA_DRAINALLPAGES, 0, NULL);
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		drained = true;
 		goto retry;
 	}
@@ -4827,7 +4911,13 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 	unsigned int cpuset_mems_cookie;
 	unsigned int zonelist_iter_cookie;
 	int reserve_flags;
+<<<<<<< HEAD
 	unsigned long vh_record;
+=======
+#ifdef CONFIG_RECLAIM_ACCT
+	struct reclaim_acct ra = {0};
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	trace_android_vh_alloc_pages_slowpath_begin(gfp_mask, order, &vh_record);
 	/*
@@ -4969,8 +5059,14 @@ retry:
 		goto got_pg;
 
 	/* Try direct reclaim and then allocating */
+#ifdef CONFIG_RECLAIM_ACCT
+	reclaimacct_start(DIRECT_RECLAIMS, &ra);
+#endif
 	page = __alloc_pages_direct_reclaim(gfp_mask, order, alloc_flags, ac,
 							&did_some_progress);
+#ifdef CONFIG_RECLAIM_ACCT
+	reclaimacct_end(DIRECT_RECLAIMS);
+#endif
 	if (page)
 		goto got_pg;
 
@@ -5122,6 +5218,11 @@ static inline bool prepare_alloc_pages(gfp_t gfp_mask, unsigned int order,
 
 	might_sleep_if(gfp_mask & __GFP_DIRECT_RECLAIM);
 
+#ifdef CONFIG_HYPERHOLD_ZSWAPD
+	if (gfp_mask & __GFP_KSWAPD_RECLAIM)
+		wake_all_zswapd();
+#endif
+
 	if (should_fail_alloc_page(gfp_mask, order))
 		return false;
 
@@ -5240,10 +5341,16 @@ static inline void free_the_page(struct page *page, unsigned int order)
 
 void __free_pages(struct page *page, unsigned int order)
 {
+<<<<<<< HEAD
 	trace_android_vh_free_pages(page, order);
+=======
+	/* get PageHead before we drop reference */
+	int head = PageHead(page);
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (put_page_testzero(page))
 		free_the_page(page, order);
-	else if (!PageHead(page))
+	else if (!head)
 		while (order-- > 0)
 			free_the_page(page + (1 << order), order);
 }
@@ -5288,6 +5395,23 @@ static struct page *__page_frag_cache_refill(struct page_frag_cache *nc,
 
 	nc->va = page ? page_address(page) : NULL;
 
+#ifdef CONFIG_PAGE_TRACING
+	if (likely(page)) {
+		int order = get_order(nc->size);
+		int i;
+		struct page *newpage = page;
+		unsigned int deta = 1U << (unsigned int)order;
+
+		for (i = 0; i < (1 << order); i++) {
+			if (!newpage)
+				break;
+			SetPageSKB(newpage);
+			newpage++;
+		}
+		mod_zone_page_state(page_zone(page), NR_SKB_PAGES, (long)deta);
+	}
+#endif
+
 	return page;
 }
 
@@ -5295,8 +5419,16 @@ void __page_frag_cache_drain(struct page *page, unsigned int count)
 {
 	VM_BUG_ON_PAGE(page_ref_count(page) == 0, page);
 
-	if (page_ref_sub_and_test(page, count))
+	if (page_ref_sub_and_test(page, count)) {
+#ifdef CONFIG_PAGE_TRACING
+		if (likely(page)) {
+			unsigned int deta = 1U << compound_order(page);
+
+			mod_zone_page_state(page_zone(page), NR_SKB_PAGES, -(long)deta);
+		}
+#endif
 		free_the_page(page, compound_order(page));
+	}
 }
 EXPORT_SYMBOL(__page_frag_cache_drain);
 
@@ -5378,8 +5510,16 @@ void page_frag_free(void *addr)
 {
 	struct page *page = virt_to_head_page(addr);
 
-	if (unlikely(put_page_testzero(page)))
+	if (unlikely(put_page_testzero(page))) {
+#ifdef CONFIG_PAGE_TRACING
+		if (likely(page)) {
+			unsigned int deta = 1U << compound_order(page);
+
+			mod_zone_page_state(page_zone(page), NR_SKB_PAGES, -(long)deta);
+		}
+#endif
 		free_the_page(page, compound_order(page));
+	}
 }
 EXPORT_SYMBOL(page_frag_free);
 
@@ -6158,7 +6298,25 @@ static void __build_all_zonelists(void *data)
 	int nid;
 	int __maybe_unused cpu;
 	pg_data_t *self = data;
+<<<<<<< HEAD
 
+=======
+	unsigned long flags;
+
+	/*
+	 * Explicitly disable this CPU's interrupts before taking seqlock
+	 * to prevent any IRQ handler from calling into the page allocator
+	 * (e.g. GFP_ATOMIC) that could hit zonelist_iter_begin and livelock.
+	 */
+	local_irq_save(flags);
+	/*
+	 * Explicitly disable this CPU's synchronous printk() before taking
+	 * seqlock to prevent any printk() from trying to hold port->lock, for
+	 * tty_insert_flip_string_and_push_buffer() on other CPU might be
+	 * calling kmalloc(GFP_ATOMIC | __GFP_NOWARN) with port->lock held.
+	 */
+	printk_deferred_enter();
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	write_seqlock(&zonelist_update_seq);
 
 #ifdef CONFIG_NUMA
@@ -6193,6 +6351,11 @@ static void __build_all_zonelists(void *data)
 	}
 
 	write_sequnlock(&zonelist_update_seq);
+<<<<<<< HEAD
+=======
+	printk_deferred_exit();
+	local_irq_restore(flags);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 static noinline void __init
@@ -7136,10 +7299,16 @@ static void __meminit pgdat_init_internals(struct pglist_data *pgdat)
 
 	init_waitqueue_head(&pgdat->kswapd_wait);
 	init_waitqueue_head(&pgdat->pfmemalloc_wait);
+#ifdef CONFIG_HYPERHOLD_ZSWAPD
+	init_waitqueue_head(&pgdat->zswapd_wait);
+#endif
 
 	pgdat_page_ext_init(pgdat);
 	spin_lock_init(&pgdat->lru_lock);
 	lruvec_init(&pgdat->__lruvec);
+#if defined(CONFIG_HYPERHOLD_FILE_LRU) && defined(CONFIG_MEMCG)
+	pgdat->__lruvec.pgdat = pgdat;
+#endif
 }
 
 static void __meminit zone_init_internals(struct zone *zone, enum zone_type idx, int nid,
@@ -9172,6 +9341,7 @@ static void break_down_buddy_pages(struct zone *zone, struct page *page,
 			next_page = page;
 			current_buddy = page + size;
 		}
+		page = next_page;
 
 		if (set_page_guard(zone, current_buddy, high, migratetype))
 			continue;
@@ -9179,7 +9349,6 @@ static void break_down_buddy_pages(struct zone *zone, struct page *page,
 		if (current_buddy != target) {
 			add_to_free_list(current_buddy, zone, high, migratetype);
 			set_buddy_order(current_buddy, high);
-			page = next_page;
 		}
 	}
 }

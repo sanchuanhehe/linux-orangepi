@@ -2053,7 +2053,11 @@ struct opp_table *dev_pm_opp_attach_genpd(struct device *dev,
 
 		virt_dev = dev_pm_domain_attach_by_name(dev, *name);
 		if (IS_ERR_OR_NULL(virt_dev)) {
+<<<<<<< HEAD
 			ret = PTR_ERR(virt_dev) ? : -ENODEV;
+=======
+			ret = virt_dev ? PTR_ERR(virt_dev) : -ENODEV;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			dev_err(dev, "Couldn't attach to pm_domain: %d\n", ret);
 			goto err;
 		}

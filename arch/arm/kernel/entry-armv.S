@@ -15,6 +15,7 @@
 #include <linux/init.h>
 
 #include <asm/assembler.h>
+#include <asm/extable.h>
 #include <asm/memory.h>
 #include <asm/glue-df.h>
 #include <asm/glue-pf.h>
@@ -406,7 +407,8 @@ ENDPROC(__fiq_abt)
 	@ if it was interrupted in a critical region.  Here we
 	@ perform a quick test inline since it should be false
 	@ 99.9999% of the time.  The rest is done out of line.
-	cmp	r4, #TASK_SIZE
+	ldr	r0, =TASK_SIZE
+	cmp	r4, r0
 	blhs	kuser_cmpxchg64_fixup
 #endif
 #endif
@@ -534,13 +536,11 @@ ENDPROC(__und_usr)
 4:	str     r4, [sp, #S_PC]			@ retry current instruction
 	ret	r9
 	.popsection
-	.pushsection __ex_table,"a"
-	.long	1b, 4b
+	ex_entry	1b, 4b
 #if CONFIG_ARM_THUMB && __LINUX_ARM_ARCH__ >= 6 && CONFIG_CPU_V7
-	.long	2b, 4b
-	.long	3b, 4b
+	ex_entry	2b, 4b
+	ex_entry	3b, 4b
 #endif
-	.popsection
 
 /*
  * Check whether the instruction is a co-processor instruction.
@@ -1000,7 +1000,7 @@ __kuser_helper_end:
 	.macro	vector_stub, name, mode, correction=0
 	.align	5
 
-vector_\name:
+.Lvector_\name:
 	.if \correction
 	sub	lr, lr, #\correction
 	.endif
@@ -1028,7 +1028,45 @@ vector_\name:
 	mov	r0, sp
  ARM(	ldr	lr, [pc, lr, lsl #2]	)
 	movs	pc, lr			@ branch to handler in SVC mode
-ENDPROC(vector_\name)
+ENDPROC(.Lvector_\name)
+
+#ifdef CONFIG_HARDEN_BRANCH_HISTORY
+	.subsection 1
+	.align 5
+vector_bhb_loop8_\name:
+	.if \correction
+	sub	lr, lr, #\correction
+	.endif
+
+	@ Save r0, lr_<exception> (parent PC)
+	stmia	sp, {r0, lr}
+
+	@ bhb workaround
+	mov	r0, #8
+3:	W(b)	. + 4
+	subs	r0, r0, #1
+	bne	3b
+	dsb
+	isb
+	b	2b
+ENDPROC(vector_bhb_loop8_\name)
+
+vector_bhb_bpiall_\name:
+	.if \correction
+	sub	lr, lr, #\correction
+	.endif
+
+	@ Save r0, lr_<exception> (parent PC)
+	stmia	sp, {r0, lr}
+
+	@ bhb workaround
+	mcr	p15, 0, r0, c7, c5, 6	@ BPIALL
+	@ isb not needed due to "movs pc, lr" in the vector stub
+	@ which gives a "context synchronisation".
+	b	2b
+ENDPROC(vector_bhb_bpiall_\name)
+	.previous
+#endif
 
 #ifdef CONFIG_HARDEN_BRANCH_HISTORY
 	.subsection 1
@@ -1074,6 +1112,10 @@ ENDPROC(vector_bhb_bpiall_\name)
 	.endm
 
 	.section .stubs, "ax", %progbits
+#ifdef CONFIG_FIQ
+	.global	vector_fiq_offset
+	.set	vector_fiq_offset, .Lvector_fiq - . + 0x1000
+#endif
 	@ This must be the first word
 	.word	vector_swi
 #ifdef CONFIG_HARDEN_BRANCH_HISTORY
@@ -1081,11 +1123,11 @@ ENDPROC(vector_bhb_bpiall_\name)
 	.word	vector_bhb_bpiall_swi
 #endif
 
-vector_rst:
+.Lvector_rst:
  ARM(	swi	SYS_ERROR0	)
  THUMB(	svc	#0		)
  THUMB(	nop			)
-	b	vector_und
+	b	.Lvector_und
 
 /*
  * Interrupt dispatcher
@@ -1187,8 +1229,8 @@ vector_rst:
  * (they're not supposed to happen, and won't happen in 32-bit data mode).
  */
 
-vector_addrexcptn:
-	b	vector_addrexcptn
+.Lvector_addrexcptn:
+	b	.Lvector_addrexcptn
 
 /*=============================================================================
  * FIQ "NMI" handler
@@ -1217,18 +1259,40 @@ vector_addrexcptn:
 	.long	__fiq_svc			@  e
 	.long	__fiq_svc			@  f
 
-	.globl	vector_fiq
-
 	.section .vectors, "ax", %progbits
 .L__vectors_start:
-	W(b)	vector_rst
-	W(b)	vector_und
+	W(b)	.Lvector_rst
+	W(b)	.Lvector_und
 	W(ldr)	pc, .L__vectors_start + 0x1000
-	W(b)	vector_pabt
-	W(b)	vector_dabt
-	W(b)	vector_addrexcptn
-	W(b)	vector_irq
-	W(b)	vector_fiq
+	W(b)	.Lvector_pabt
+	W(b)	.Lvector_dabt
+	W(b)	.Lvector_addrexcptn
+	W(b)	.Lvector_irq
+	W(b)	.Lvector_fiq
+
+#ifdef CONFIG_HARDEN_BRANCH_HISTORY
+	.section .vectors.bhb.loop8, "ax", %progbits
+.L__vectors_bhb_loop8_start:
+	W(b)	.Lvector_rst
+	W(b)	vector_bhb_loop8_und
+	W(ldr)	pc, .L__vectors_bhb_loop8_start + 0x1004
+	W(b)	vector_bhb_loop8_pabt
+	W(b)	vector_bhb_loop8_dabt
+	W(b)	.Lvector_addrexcptn
+	W(b)	vector_bhb_loop8_irq
+	W(b)	vector_bhb_loop8_fiq
+
+	.section .vectors.bhb.bpiall, "ax", %progbits
+.L__vectors_bhb_bpiall_start:
+	W(b)	.Lvector_rst
+	W(b)	vector_bhb_bpiall_und
+	W(ldr)	pc, .L__vectors_bhb_bpiall_start + 0x1008
+	W(b)	vector_bhb_bpiall_pabt
+	W(b)	vector_bhb_bpiall_dabt
+	W(b)	.Lvector_addrexcptn
+	W(b)	vector_bhb_bpiall_irq
+	W(b)	vector_bhb_bpiall_fiq
+#endif
 
 #ifdef CONFIG_HARDEN_BRANCH_HISTORY
 	.section .vectors.bhb.loop8, "ax", %progbits

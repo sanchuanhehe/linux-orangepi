@@ -118,6 +118,7 @@ config PSTORE_CONSOLE
 config PSTORE_PMSG
 	bool "Log user space messages"
 	depends on PSTORE
+	select RT_MUTEXES
 	help
 	  When the option is enabled, pstore will export a character
 	  interface /dev/pmsg0 to log user space messages. On reboot
@@ -135,6 +136,18 @@ config PSTORE_FTRACE
 	  ram buffer that can be decoded and dumped after reboot through
 	  pstore filesystem. It can be used to determine what function
 	  was last called before a reset or panic.
+
+	  If unsure, say N.
+
+config PSTORE_BLACKBOX
+	bool "Store customised fault log"
+	depends on PSTORE
+	depends on BLACKBOX
+	help
+	  Enable storing the customised fault log for BlackBox.
+
+	  With the option enabled, pstore will store the customised kernel
+	  fault log for BlackBox when oops or panic happened.
 
 	  If unsure, say N.
 
@@ -165,7 +178,7 @@ config PSTORE_BLK
 	tristate "Log panic/oops to a block device"
 	depends on PSTORE
 	depends on BLOCK
-	depends on BROKEN
+	depends on BLACKBOX_USE_PSTORE_BLK_DEBUG || BROKEN
 	select PSTORE_ZONE
 	default n
 	help
@@ -264,6 +277,7 @@ config PSTORE_BLK_FTRACE_SIZE
 	  NOTE that, both Kconfig and module parameters can configure
 	  pstore/blk, but module parameters have priority over Kconfig.
 
+<<<<<<< HEAD
 config PSTORE_BOOT_LOG
 	bool "Print boot log by linux"
 	depends on PSTORE
@@ -271,3 +285,25 @@ config PSTORE_BOOT_LOG
 	  Collect log from loader,uboot,ATF and so on, you can get their log by cat command
 	  through linux shell
 	  If unsure, say N.
+=======
+config PSTORE_BLK_BLACKBOX_SIZE
+	int "Size in Kbytes of fault log for BlackBox to store"
+	depends on PSTORE_BLK
+	depends on PSTORE_BLACKBOX
+	default 64
+	help
+	  This just sets size of fault log (blackbox_size) for pstore/blk.
+	  The size is in KB and must be a multiple of 4.
+
+	  NOTE that, both Kconfig and module parameters can configure
+	  pstore/blk, but module parameters have priority over Kconfig.
+
+config PSTORE_BLACKBOX_STACK_SIZE
+	int "Default stack size for BlackBox" if EXPERT
+	depends on PSTORE
+	depends on PSTORE_BLACKBOX
+	default 1024
+	help
+	  Defines default size of pstore stack size for blackbox.
+	  Can be enlarged if needed. not recommended to shrink it.
+>>>>>>> ohos/OpenHarmony-5.0.2-Release

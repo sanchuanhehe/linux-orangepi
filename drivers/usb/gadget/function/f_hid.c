@@ -88,6 +88,10 @@ static void hidg_release(struct device *dev)
 {
 	struct f_hidg *hidg = container_of(dev, struct f_hidg, dev);
 
+<<<<<<< HEAD
+=======
+	kfree(hidg->report_desc);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	kfree(hidg->set_report_buf);
 	kfree(hidg);
 }
@@ -1292,6 +1296,10 @@ static struct usb_function *hidg_alloc(struct usb_function_instance *fi)
 						 GFP_KERNEL);
 		if (!hidg->report_desc) {
 			put_device(&hidg->dev);
+<<<<<<< HEAD
+=======
+			--opts->refcnt;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			mutex_unlock(&opts->lock);
 			return ERR_PTR(-ENOMEM);
 		}

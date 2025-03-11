@@ -8,6 +8,7 @@ menu "Processor type and features"
 
 config IA64
 	bool
+	select ARCH_HAS_CPU_FINALIZE_INIT
 	select ARCH_HAS_DMA_MARK_CLEAN
 	select ARCH_MIGHT_HAVE_PC_PARPORT
 	select ARCH_MIGHT_HAVE_PC_SERIO
@@ -330,6 +331,7 @@ config NODES_SHIFT
 config VIRTUAL_MEM_MAP
 	bool "Virtual mem map"
 	depends on !SPARSEMEM
+	select HOLES_IN_ZONE
 	default y
 	help
 	  Say Y to compile the kernel with support for a virtual mem map.
@@ -337,10 +339,6 @@ config VIRTUAL_MEM_MAP
 	  1 Gb is found during boot.  You must turn this option on if you
 	  require the DISCONTIGMEM option for your machine. If you are
 	  unsure, say Y.
-
-config HOLES_IN_ZONE
-	bool
-	default y if VIRTUAL_MEM_MAP
 
 config HAVE_ARCH_EARLY_PFN_TO_NID
 	def_bool NUMA && SPARSEMEM
@@ -361,7 +359,7 @@ config ARCH_PROC_KCORE_TEXT
 	depends on PROC_KCORE
 
 config IA64_MCA_RECOVERY
-	tristate "MCA recovery from errors other than TLB."
+	bool "MCA recovery from errors other than TLB."
 
 config IA64_PALINFO
 	tristate "/proc/pal support"

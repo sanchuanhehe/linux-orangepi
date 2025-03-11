@@ -265,6 +265,7 @@ struct binder_node_info_for_ref {
 	__u32            reserved3;
 };
 
+<<<<<<< HEAD
 struct binder_freeze_info {
 	__u32            pid;
 	__u32            enable;
@@ -282,6 +283,21 @@ struct binder_frozen_status_info {
 
 	/* process received async transactions since last frozen */
 	__u32            async_recv;
+=======
+struct binder_feature_set {
+	__u64 feature_set;
+};
+
+struct access_token {
+	__u64 sender_tokenid;
+	__u64 first_tokenid;
+	__u64 reserved[2];
+};
+
+struct binder_sender_info {
+	struct access_token tokens;
+	__u64 sender_pid_nr;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 };
 
 #define BINDER_WRITE_READ		_IOWR('b', 1, struct binder_write_read)
@@ -297,6 +313,10 @@ struct binder_frozen_status_info {
 #define BINDER_FREEZE			_IOW('b', 14, struct binder_freeze_info)
 #define BINDER_GET_FROZEN_INFO		_IOWR('b', 15, struct binder_frozen_status_info)
 #define BINDER_ENABLE_ONEWAY_SPAM_DETECTION	_IOW('b', 16, __u32)
+
+#define BINDER_FEATURE_SET	_IOWR('b', 30, struct binder_feature_set)
+#define BINDER_GET_ACCESS_TOKEN	_IOWR('b', 31, struct access_token)
+#define BINDER_GET_SENDER_INFO	_IOWR('b', 32, struct binder_sender_info)
 
 /*
  * NOTE: Two special error codes you should check for when calling

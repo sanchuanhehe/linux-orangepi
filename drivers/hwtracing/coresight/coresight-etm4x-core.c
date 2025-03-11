@@ -447,9 +447,17 @@ static int etm4_enable_hw(struct etmv4_drvdata *drvdata)
 		if (etm4x_sspcicrn_present(drvdata, i))
 			etm4x_relaxed_write32(csa, config->ss_pe_cmp[i], TRCSSPCICRn(i));
 	}
+<<<<<<< HEAD
 	for (i = 0; i < drvdata->nr_addr_cmp; i++) {
 		etm4x_relaxed_write64(csa, config->addr_val[i], TRCACVRn(i));
 		etm4x_relaxed_write64(csa, config->addr_acc[i], TRCACATRn(i));
+=======
+	for (i = 0; i < drvdata->nr_addr_cmp * 2; i++) {
+		writeq_relaxed(config->addr_val[i],
+			       drvdata->base + TRCACVRn(i));
+		writeq_relaxed(config->addr_acc[i],
+			       drvdata->base + TRCACATRn(i));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	}
 	for (i = 0; i < drvdata->numcidc; i++)
 		etm4x_relaxed_write64(csa, config->ctxid_pid[i], TRCCIDCVRn(i));
@@ -2056,7 +2064,11 @@ static void clear_etmdrvdata(void *info)
 	etmdrvdata[cpu] = NULL;
 }
 
+<<<<<<< HEAD
 static void __exit etm4_remove_dev(struct etmv4_drvdata *drvdata)
+=======
+static void etm4_remove(struct amba_device *adev)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	etm_perf_symlink(drvdata->csdev, false);
 	/*
@@ -2076,6 +2088,7 @@ static void __exit etm4_remove_dev(struct etmv4_drvdata *drvdata)
 	cpus_read_unlock();
 
 	coresight_unregister(drvdata->csdev);
+<<<<<<< HEAD
 }
 
 static void __exit etm4_remove_amba(struct amba_device *adev)
@@ -2095,6 +2108,8 @@ static int __exit etm4_remove_platform_dev(struct platform_device *pdev)
 		etm4_remove_dev(drvdata);
 	pm_runtime_disable(&pdev->dev);
 	return ret;
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 static const struct amba_id etm4_ids[] = {

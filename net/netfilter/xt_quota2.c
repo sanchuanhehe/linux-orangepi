@@ -1,6 +1,7 @@
 /*
  * xt_quota2 - enhanced xt_quota that can count upwards and in packets
  * as a minimal accounting match.
+<<<<<<< HEAD
  * by Jan Engelhardt <jengelh@medozas.de>, 2008
  *
  * Originally based on xt_quota.c:
@@ -18,10 +19,37 @@
 #include <linux/spinlock.h>
 #include <asm/atomic.h>
 #include <net/netlink.h>
+=======
+ * by Jan Engelhardt , 2008
+ *
+ * Originally based on xt_quota.c:
+ * 	Xtables module to enforce network quotas
+ * 	Sam Johnston <samj@samj.net>
+ *
+ *	This program is free software; you can redistribute it and/or modify
+ *	it under the terms of the GNU General Public License
+ *	version 2, as published by the Free Software Foundation.
+ */
+#include <linux/list.h>
+#include <linux/module.h>
+#include <linux/nsproxy.h>
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
+#include <linux/skbuff.h>
+#include <linux/spinlock.h>
+#include <linux/uidgid.h>
+#include <linux/version.h>
+#include <asm/atomic.h>
+#include <net/netlink.h>
+#include <net/net_namespace.h>
+#include <net/netns/generic.h>
+#include <net/dst.h>
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 #include <linux/netfilter/x_tables.h>
 #include <linux/netfilter/xt_quota2.h>
 
+<<<<<<< HEAD
 #ifdef CONFIG_NETFILTER_XT_MATCH_QUOTA2_LOG
 /* For compatibility, these definitions are copied from the
  * deprecated header file <linux/netfilter_ipv4/ipt_ULOG.h> */
@@ -44,6 +72,8 @@ typedef struct ulog_packet_msg {
 } ulog_packet_msg_t;
 #endif
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 /**
  * @lock:	lock to protect quota writers from each other
  */
@@ -56,6 +86,7 @@ struct xt_quota_counter {
 	struct proc_dir_entry *procfs_entry;
 };
 
+<<<<<<< HEAD
 #ifdef CONFIG_NETFILTER_XT_MATCH_QUOTA2_LOG
 /* Harald's favorite number +1 :D From ipt_ULOG.C */
 static int qlog_nl_event = 112;
@@ -149,6 +180,50 @@ static ssize_t quota_proc_write(struct file *file, const char __user *input,
 {
 	struct xt_quota_counter *e = PDE_DATA(file_inode(file));
 	char buf[sizeof("18446744073709551616")];
+=======
+struct quota2_net {
+	struct list_head counter_list;
+	struct proc_dir_entry *proc_xt_quota;
+};
+
+static int quota2_net_id;
+static inline struct quota2_net *quota2_pernet(struct net *net)
+{
+	return net_generic(net, quota2_net_id);
+}
+
+static DEFINE_SPINLOCK(counter_list_lock);
+
+static unsigned int quota_list_perms = S_IRUGO | S_IWUSR;
+static unsigned int quota_list_uid   = 0;
+static unsigned int quota_list_gid   = 0;
+module_param_named(perms, quota_list_perms, uint, S_IRUGO | S_IWUSR);
+module_param_named(uid, quota_list_uid, uint, S_IRUGO | S_IWUSR);
+module_param_named(gid, quota_list_gid, uint, S_IRUGO | S_IWUSR);
+
+
+static int quota_proc_show(struct seq_file *m, void *data)
+{
+	struct xt_quota_counter *e = m->private;
+
+	spin_lock_bh(&e->lock);
+	seq_printf(m, "%llu\n", e->quota);
+	spin_unlock_bh(&e->lock);
+	return 0;
+}
+
+static int quota_proc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, quota_proc_show, PDE_DATA(inode));
+}
+
+static ssize_t
+quota_proc_write(struct file *file, const char __user *input,
+                 size_t size, loff_t *loff)
+{
+	struct xt_quota_counter *e = PDE_DATA(file_inode(file));
+	char buf[sizeof("+-18446744073709551616")];
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	if (size > sizeof(buf))
 		size = sizeof(buf);
@@ -158,6 +233,7 @@ static ssize_t quota_proc_write(struct file *file, const char __user *input,
 	if (size < sizeof(buf))
 		buf[size] = '\0';
 
+<<<<<<< HEAD
 	spin_lock_bh(&e->lock);
 	e->quota = simple_strtoull(buf, NULL, 0);
 	spin_unlock_bh(&e->lock);
@@ -168,6 +244,40 @@ static const struct proc_ops q2_counter_fops = {
 	.proc_read	= quota_proc_read,
 	.proc_write	= quota_proc_write,
 	.proc_lseek	= default_llseek,
+=======
+	if (*buf == '+') {
+		int64_t temp = simple_strtoll(buf + 1, NULL, 0);
+		spin_lock_bh(&e->lock);
+		/* Do not let quota become negative if @tmp is very negative */
+		if (temp > 0 || -temp < e->quota)
+			e->quota += temp;
+		else
+			e->quota = 0;
+		spin_unlock_bh(&e->lock);
+	} else if (*buf == '-') {
+		int64_t temp = simple_strtoll(buf + 1, NULL, 0);
+		spin_lock_bh(&e->lock);
+		/* Do not let quota become negative if @tmp is very big */
+		if (temp < 0 || temp < e->quota)
+			e->quota -= temp;
+		else
+			e->quota = 0;
+		spin_unlock_bh(&e->lock);
+	} else {
+		spin_lock_bh(&e->lock);
+		e->quota = simple_strtoull(buf, NULL, 0);
+		spin_unlock_bh(&e->lock);
+	}
+	return size;
+}
+
+static const struct proc_ops quota_proc_fops = {
+	.proc_open    = quota_proc_open,
+	.proc_read    = seq_read,
+	.proc_write   = quota_proc_write,
+	.proc_lseek   = seq_lseek,
+	.proc_release = single_release,
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 };
 
 static struct xt_quota_counter *
@@ -187,7 +297,11 @@ q2_new_counter(const struct xt_quota_mtinfo2 *q, bool anon)
 	if (!anon) {
 		INIT_LIST_HEAD(&e->list);
 		atomic_set(&e->ref, 1);
+<<<<<<< HEAD
 		strlcpy(e->name, q->name, sizeof(e->name));
+=======
+		strncpy(e->name, q->name, sizeof(e->name));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	}
 	return e;
 }
@@ -197,15 +311,24 @@ q2_new_counter(const struct xt_quota_mtinfo2 *q, bool anon)
  * @name:	name of counter
  */
 static struct xt_quota_counter *
+<<<<<<< HEAD
 q2_get_counter(const struct xt_quota_mtinfo2 *q)
 {
 	struct proc_dir_entry *p;
 	struct xt_quota_counter *e = NULL;
 	struct xt_quota_counter *new_e;
+=======
+q2_get_counter(struct net *net, const struct xt_quota_mtinfo2 *q)
+{
+	struct proc_dir_entry *p;
+	struct xt_quota_counter *e;
+	struct quota2_net *quota2_net = quota2_pernet(net);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	if (*q->name == '\0')
 		return q2_new_counter(q, true);
 
+<<<<<<< HEAD
 	/* No need to hold a lock while getting a new counter */
 	new_e = q2_new_counter(q, false);
 	if (new_e == NULL)
@@ -246,6 +369,35 @@ q2_get_counter(const struct xt_quota_mtinfo2 *q)
 	return e;
 
  out:
+=======
+	spin_lock_bh(&counter_list_lock);
+	list_for_each_entry(e, &quota2_net->counter_list, list)
+		if (strcmp(e->name, q->name) == 0) {
+			atomic_inc(&e->ref);
+			spin_unlock_bh(&counter_list_lock);
+			return e;
+		}
+
+	e = q2_new_counter(q, false);
+	if (e == NULL)
+		goto out;
+
+	p = proc_create_data(e->name, quota_list_perms,
+	                     quota2_net->proc_xt_quota,
+	                     &quota_proc_fops, e);
+	if (p == NULL || IS_ERR(p))
+		goto out;
+
+	e->procfs_entry = p;
+	proc_set_user(p, make_kuid(&init_user_ns, quota_list_uid),
+	              make_kgid(&init_user_ns, quota_list_gid));
+	list_add_tail(&e->list, &quota2_net->counter_list);
+	spin_unlock_bh(&counter_list_lock);
+	return e;
+
+ out:
+	spin_unlock_bh(&counter_list_lock);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	kfree(e);
 	return NULL;
 }
@@ -254,8 +406,11 @@ static int quota_mt2_check(const struct xt_mtchk_param *par)
 {
 	struct xt_quota_mtinfo2 *q = par->matchinfo;
 
+<<<<<<< HEAD
 	pr_debug("xt_quota2: check() flags=0x%04x", q->flags);
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (q->flags & ~XT_QUOTA_MASK)
 		return -EINVAL;
 
@@ -265,7 +420,11 @@ static int quota_mt2_check(const struct xt_mtchk_param *par)
 		return -EINVAL;
 	}
 
+<<<<<<< HEAD
 	q->master = q2_get_counter(q);
+=======
+	q->master = q2_get_counter(par->net, q);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (q->master == NULL) {
 		printk(KERN_ERR "xt_quota.3: memory alloc failure\n");
 		return -ENOMEM;
@@ -278,6 +437,10 @@ static void quota_mt2_destroy(const struct xt_mtdtor_param *par)
 {
 	struct xt_quota_mtinfo2 *q = par->matchinfo;
 	struct xt_quota_counter *e = q->master;
+<<<<<<< HEAD
+=======
+	struct quota2_net *quota2_net = quota2_pernet(par->net);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	if (*q->name == '\0') {
 		kfree(e);
@@ -291,8 +454,13 @@ static void quota_mt2_destroy(const struct xt_mtdtor_param *par)
 	}
 
 	list_del(&e->list);
+<<<<<<< HEAD
 	spin_unlock_bh(&counter_list_lock);
 	remove_proc_entry(e->name, proc_xt_quota);
+=======
+	remove_proc_entry(e->name, quota2_net->proc_xt_quota);
+	spin_unlock_bh(&counter_list_lock);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	kfree(e);
 }
 
@@ -301,8 +469,11 @@ quota_mt2(const struct sk_buff *skb, struct xt_action_param *par)
 {
 	struct xt_quota_mtinfo2 *q = (void *)par->matchinfo;
 	struct xt_quota_counter *e = q->master;
+<<<<<<< HEAD
 	int charge = (q->flags & XT_QUOTA_PACKET) ? 1 : skb->len;
 	bool no_change = q->flags & XT_QUOTA_NO_CHANGE;
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	bool ret = q->flags & XT_QUOTA_INVERT;
 
 	spin_lock_bh(&e->lock);
@@ -311,6 +482,7 @@ quota_mt2(const struct sk_buff *skb, struct xt_action_param *par)
 		 * While no_change is pointless in "grow" mode, we will
 		 * implement it here simply to have a consistent behavior.
 		 */
+<<<<<<< HEAD
 		if (!no_change)
 			e->quota += charge;
 		ret = true; /* note: does not respect inversion (bug??) */
@@ -329,6 +501,24 @@ quota_mt2(const struct sk_buff *skb, struct xt_action_param *par)
 			/* we do not allow even small packets from now on */
 			e->quota = 0;
 		}
+=======
+		if (!(q->flags & XT_QUOTA_NO_CHANGE)) {
+			e->quota += (q->flags & XT_QUOTA_PACKET) ? 1 : skb->len;
+			q->quota = e->quota;
+		}
+		ret = true;
+	} else {
+		if (e->quota >= ((q->flags & XT_QUOTA_PACKET) ? 1 : skb->len)) {
+			if (!(q->flags & XT_QUOTA_NO_CHANGE))
+				e->quota -= (q->flags & XT_QUOTA_PACKET) ? 1 : skb->len;
+			ret = !ret;
+		} else {
+			/* we do not allow even small packets from now on */
+			if (!(q->flags & XT_QUOTA_NO_CHANGE))
+				e->quota = 0;
+		}
+		q->quota = e->quota;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	}
 	spin_unlock_bh(&e->lock);
 	return ret;
@@ -343,7 +533,10 @@ static struct xt_match quota_mt2_reg[] __read_mostly = {
 		.match      = quota_mt2,
 		.destroy    = quota_mt2_destroy,
 		.matchsize  = sizeof(struct xt_quota_mtinfo2),
+<<<<<<< HEAD
 		.usersize   = offsetof(struct xt_quota_mtinfo2, master),
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		.me         = THIS_MODULE,
 	},
 	{
@@ -354,11 +547,15 @@ static struct xt_match quota_mt2_reg[] __read_mostly = {
 		.match      = quota_mt2,
 		.destroy    = quota_mt2_destroy,
 		.matchsize  = sizeof(struct xt_quota_mtinfo2),
+<<<<<<< HEAD
 		.usersize   = offsetof(struct xt_quota_mtinfo2, master),
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		.me         = THIS_MODULE,
 	},
 };
 
+<<<<<<< HEAD
 static int __init quota_mt2_init(void)
 {
 	int ret;
@@ -378,20 +575,77 @@ static int __init quota_mt2_init(void)
 	if (ret < 0)
 		remove_proc_entry("xt_quota", init_net.proc_net);
 	pr_debug("xt_quota2: init() %d", ret);
+=======
+static int __net_init quota2_net_init(struct net *net)
+{
+	struct quota2_net *quota2_net = quota2_pernet(net);
+	INIT_LIST_HEAD(&quota2_net->counter_list);
+
+	quota2_net->proc_xt_quota = proc_mkdir("xt_quota", net->proc_net);
+	if (quota2_net->proc_xt_quota == NULL)
+		return -EACCES;
+	return 0;
+}
+
+static void __net_exit quota2_net_exit(struct net *net)
+{
+	struct quota2_net *quota2_net = quota2_pernet(net);
+	struct xt_quota_counter *e = NULL;
+	struct list_head *pos, *q;
+
+	remove_proc_entry("xt_quota", net->proc_net);
+
+	/* destroy counter_list while freeing it's content */
+	spin_lock_bh(&counter_list_lock);
+	list_for_each_safe(pos, q, &quota2_net->counter_list) {
+		e = list_entry(pos, struct xt_quota_counter, list);
+		list_del(pos);
+		kfree(e);
+	}
+	spin_unlock_bh(&counter_list_lock);
+}
+
+static struct pernet_operations quota2_net_ops = {
+	.init   = quota2_net_init,
+	.exit   = quota2_net_exit,
+	.id     = &quota2_net_id,
+	.size   = sizeof(struct quota2_net),
+};
+
+static int __init quota_mt2_init(void)
+{
+	int ret;
+	ret = register_pernet_subsys(&quota2_net_ops);
+	if (ret < 0)
+		return ret;
+
+	ret = xt_register_matches(quota_mt2_reg, ARRAY_SIZE(quota_mt2_reg));
+	if (ret < 0)
+		unregister_pernet_subsys(&quota2_net_ops);
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	return ret;
 }
 
 static void __exit quota_mt2_exit(void)
 {
 	xt_unregister_matches(quota_mt2_reg, ARRAY_SIZE(quota_mt2_reg));
+<<<<<<< HEAD
 	remove_proc_entry("xt_quota", init_net.proc_net);
+=======
+	unregister_pernet_subsys(&quota2_net_ops);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 module_init(quota_mt2_init);
 module_exit(quota_mt2_exit);
 MODULE_DESCRIPTION("Xtables: countdown quota match; up counter");
 MODULE_AUTHOR("Sam Johnston <samj@samj.net>");
+<<<<<<< HEAD
 MODULE_AUTHOR("Jan Engelhardt <jengelh@medozas.de>");
+=======
+MODULE_AUTHOR("Jan Engelhardt ");
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("ipt_quota2");
 MODULE_ALIAS("ip6t_quota2");

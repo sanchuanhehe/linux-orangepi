@@ -249,11 +249,26 @@ struct security_class_mapping secclass_map[] = {
 	  { COMMON_SOCK_PERMS, NULL } },
 	{ "perf_event",
 	  { "open", "cpu", "kernel", "tracepoint", "read", "write", NULL } },
+<<<<<<< HEAD
 	{ "anon_inode",
 	  { COMMON_FILE_PERMS, NULL } },
+=======
+	{ "lockdown",
+	  { "integrity", "confidentiality", NULL } },
+	{ "xpm",
+	  { "exec_no_sign", "exec_anon_mem", NULL } },
+	{ "ced",
+	  { "container_escape_check", NULL } },
+	{ "hideaddr",
+	  { "hide_exec_anon_mem", "hide_exec_anon_mem_debug", NULL } },
+	{ "code_sign",
+	  { "add_cert_chain", "remove_cert_chain", NULL } },
+	{ "jit_memory",
+	  { "exec_mem_ctrl", NULL } },
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	{ NULL }
   };
 
-#if PF_MAX > 45
+#if PF_MAX > 46
 #error New address family defined, please update secclass_map.
 #endif

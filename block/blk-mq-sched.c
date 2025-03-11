@@ -45,8 +45,7 @@ void blk_mq_sched_assign_ioc(struct request *rq)
 }
 
 /*
- * Mark a hardware queue as needing a restart. For shared queues, maintain
- * a count of how many hardware queues are marked for restart.
+ * Mark a hardware queue as needing a restart.
  */
 void blk_mq_sched_mark_restart_hctx(struct blk_mq_hw_ctx *hctx)
 {
@@ -109,7 +108,7 @@ dispatch:
 /*
  * Only SCSI implements .get_budget and .put_budget, and SCSI restarts
  * its queue by itself in its completion handler, so we don't need to
- * restart queue if .get_budget() returns BLK_STS_NO_RESOURCE.
+ * restart queue if .get_budget() fails to get the budget.
  *
  * Returns -EAGAIN if hctx->dispatch was found non-empty and run_work has to
  * be run again.  This is necessary to avoid starving flushes.
@@ -223,7 +222,7 @@ static struct blk_mq_ctx *blk_mq_next_ctx(struct blk_mq_hw_ctx *hctx,
 /*
  * Only SCSI implements .get_budget and .put_budget, and SCSI restarts
  * its queue by itself in its completion handler, so we don't need to
- * restart queue if .get_budget() returns BLK_STS_NO_RESOURCE.
+ * restart queue if .get_budget() fails to get the budget.
  *
  * Returns -EAGAIN if hctx->dispatch was found non-empty and run_work has to
  * be run again.  This is necessary to avoid starving flushes.
@@ -387,15 +386,16 @@ bool __blk_mq_sched_bio_merge(struct request_queue *q, struct bio *bio,
 	return ret;
 }
 
-bool blk_mq_sched_try_insert_merge(struct request_queue *q, struct request *rq)
+bool blk_mq_sched_try_insert_merge(struct request_queue *q, struct request *rq,
+				   struct list_head *free)
 {
-	return rq_mergeable(rq) && elv_attempt_insert_merge(q, rq);
+	return rq_mergeable(rq) && elv_attempt_insert_merge(q, rq, free);
 }
 EXPORT_SYMBOL_GPL(blk_mq_sched_try_insert_merge);
 
 void blk_mq_sched_request_inserted(struct request *rq)
 {
-	trace_block_rq_insert(rq->q, rq);
+	trace_block_rq_insert(rq);
 }
 EXPORT_SYMBOL_GPL(blk_mq_sched_request_inserted);
 
@@ -512,19 +512,6 @@ void blk_mq_sched_insert_requests(struct blk_mq_hw_ctx *hctx,
 	percpu_ref_put(&q->q_usage_counter);
 }
 
-static void blk_mq_sched_free_tags(struct blk_mq_tag_set *set,
-				   struct blk_mq_hw_ctx *hctx,
-				   unsigned int hctx_idx)
-{
-	unsigned int flags = set->flags & ~BLK_MQ_F_TAG_HCTX_SHARED;
-
-	if (hctx->sched_tags) {
-		blk_mq_free_rqs(set, hctx->sched_tags, hctx_idx);
-		blk_mq_free_rq_map(hctx->sched_tags, flags);
-		hctx->sched_tags = NULL;
-	}
-}
-
 static int blk_mq_sched_alloc_tags(struct request_queue *q,
 				   struct blk_mq_hw_ctx *hctx,
 				   unsigned int hctx_idx)
@@ -540,8 +527,10 @@ static int blk_mq_sched_alloc_tags(struct request_queue *q,
 		return -ENOMEM;
 
 	ret = blk_mq_alloc_rqs(set, hctx->sched_tags, hctx_idx, q->nr_requests);
-	if (ret)
-		blk_mq_sched_free_tags(set, hctx, hctx_idx);
+	if (ret) {
+		blk_mq_free_rq_map(hctx->sched_tags, flags);
+		hctx->sched_tags = NULL;
+	}
 
 	return ret;
 }

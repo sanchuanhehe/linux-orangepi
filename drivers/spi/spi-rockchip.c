@@ -748,6 +748,7 @@ static int rockchip_spi_slave_abort(struct spi_controller *ctlr)
 	struct rockchip_spi *rs = spi_controller_get_devdata(ctlr);
 	u32 rx_fifo_left;
 
+<<<<<<< HEAD
 	/* Flush rx fifo */
 	rx_fifo_left = readl_relaxed(rs->regs + ROCKCHIP_SPI_RXFLR);
 	for (; rx_fifo_left; rx_fifo_left--)
@@ -795,6 +796,16 @@ static int rockchip_spi_transfer_wait(struct spi_controller *ctlr,
 			return -ETIMEDOUT;
 		}
 	}
+=======
+	if (atomic_read(&rs->state) & RXDMA)
+		dmaengine_terminate_sync(ctlr->dma_rx);
+	if (atomic_read(&rs->state) & TXDMA)
+		dmaengine_terminate_sync(ctlr->dma_tx);
+	atomic_set(&rs->state, 0);
+	spi_enable_chip(rs, false);
+	rs->slave_abort = true;
+	complete(&ctlr->xfer_completion);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	return 0;
 }
@@ -975,7 +986,11 @@ static int rockchip_spi_probe(struct platform_device *pdev)
 	struct spi_controller *ctlr;
 	struct resource *mem;
 	struct device_node *np = pdev->dev.of_node;
+<<<<<<< HEAD
 	u32 rsd_nsecs, num_cs, csm;
+=======
+	u32 rsd_nsecs, num_cs;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	bool slave_mode;
 	struct pinctrl *pinctrl = NULL;
 	const struct rockchip_spi_quirks *quirks_cfg;
@@ -1130,7 +1145,11 @@ static int rockchip_spi_probe(struct platform_device *pdev)
 		 * rk spi0 has two native cs, spi1..5 one cs only
 		 * if num-cs is missing in the dts, default to 1
 		 */
+<<<<<<< HEAD
 		if (device_property_read_u32(&pdev->dev, "num-cs", &num_cs))
+=======
+		if (of_property_read_u32(np, "num-cs", &num_cs))
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			num_cs = 1;
 		ctlr->num_chipselect = num_cs;
 		ctlr->use_gpio_descriptors = true;

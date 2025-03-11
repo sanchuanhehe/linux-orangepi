@@ -1488,6 +1488,7 @@ config NETFILTER_XT_MATCH_QUOTA2
 	  If you want to compile it as a module, say M here and read
 	  <file:Documentation/kbuild/modules.txt>.  If unsure, say `N'.
 
+<<<<<<< HEAD
 config NETFILTER_XT_MATCH_QUOTA2_LOG
 	bool '"quota2" Netfilter LOG support'
 	depends on NETFILTER_XT_MATCH_QUOTA2
@@ -1499,6 +1500,8 @@ config NETFILTER_XT_MATCH_QUOTA2_LOG
 
 	  If unsure, say `N'.
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 config NETFILTER_XT_MATCH_RATEEST
 	tristate '"rateest" match support'
 	depends on NETFILTER_ADVANCED

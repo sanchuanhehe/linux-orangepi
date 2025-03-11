@@ -654,3 +654,12 @@ bool arch_is_rethunk(struct symbol *sym)
 {
 	return !strcmp(sym->name, "__x86_return_thunk");
 }
+<<<<<<< HEAD
+=======
+
+bool arch_is_embedded_insn(struct symbol *sym)
+{
+	return !strcmp(sym->name, "retbleed_return_thunk") ||
+	       !strcmp(sym->name, "srso_safe_ret");
+}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release

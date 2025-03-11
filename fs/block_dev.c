@@ -1957,20 +1957,6 @@ ssize_t blkdev_read_iter(struct kiocb *iocb, struct iov_iter *to)
 }
 EXPORT_SYMBOL_GPL(blkdev_read_iter);
 
-/*
- * Try to release a page associated with block device when the system
- * is under memory pressure.
- */
-static int blkdev_releasepage(struct page *page, gfp_t wait)
-{
-	struct super_block *super = BDEV_I(page->mapping->host)->bdev.bd_super;
-
-	if (super && super->s_op->bdev_try_to_free_page)
-		return super->s_op->bdev_try_to_free_page(super, page, wait);
-
-	return try_to_free_buffers(page);
-}
-
 static int blkdev_writepages(struct address_space *mapping,
 			     struct writeback_control *wbc)
 {
@@ -1984,7 +1970,6 @@ static const struct address_space_operations def_blk_aops = {
 	.write_begin	= blkdev_write_begin,
 	.write_end	= blkdev_write_end,
 	.writepages	= blkdev_writepages,
-	.releasepage	= blkdev_releasepage,
 	.direct_IO	= blkdev_direct_IO,
 	.migratepage	= buffer_migrate_page_norefs,
 	.is_dirty_writeback = buffer_check_dirty_writeback,
@@ -2024,22 +2009,33 @@ static long blkdev_fallocate(struct file *file, int mode, loff_t start,
 	if ((start | len) & (bdev_logical_block_size(bdev) - 1))
 		return -EINVAL;
 
-	/* Invalidate the page cache, including dirty pages. */
-	error = truncate_bdev_range(bdev, file->f_mode, start, end);
-	if (error)
-		return error;
-
+	/*
+	 * Invalidate the page cache, including dirty pages, for valid
+	 * de-allocate mode calls to fallocate().
+	 */
 	switch (mode) {
 	case FALLOC_FL_ZERO_RANGE:
 	case FALLOC_FL_ZERO_RANGE | FALLOC_FL_KEEP_SIZE:
+		error = truncate_bdev_range(bdev, file->f_mode, start, end);
+		if (error)
+			break;
+
 		error = blkdev_issue_zeroout(bdev, start >> 9, len >> 9,
 					    GFP_KERNEL, BLKDEV_ZERO_NOUNMAP);
 		break;
 	case FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE:
+		error = truncate_bdev_range(bdev, file->f_mode, start, end);
+		if (error)
+			break;
+
 		error = blkdev_issue_zeroout(bdev, start >> 9, len >> 9,
 					     GFP_KERNEL, BLKDEV_ZERO_NOFALLBACK);
 		break;
 	case FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE | FALLOC_FL_NO_HIDE_STALE:
+		error = truncate_bdev_range(bdev, file->f_mode, start, end);
+		if (error)
+			break;
+
 		error = blkdev_issue_discard(bdev, start >> 9, len >> 9,
 					     GFP_KERNEL, 0);
 		break;
@@ -2050,13 +2046,11 @@ static long blkdev_fallocate(struct file *file, int mode, loff_t start,
 		return error;
 
 	/*
-	 * Invalidate again; if someone wandered in and dirtied a page,
-	 * the caller will be given -EBUSY.  The third argument is
-	 * inclusive, so the rounding here is safe.
+	 * Invalidate the page cache again; if someone wandered in and dirtied
+	 * a page, we just discard it - userspace has no way of knowing whether
+	 * the write happened before or after discard completing...
 	 */
-	return invalidate_inode_pages2_range(bdev->bd_inode->i_mapping,
-					     start >> PAGE_SHIFT,
-					     end >> PAGE_SHIFT);
+	return truncate_bdev_range(bdev, file->f_mode, start, end);
 }
 
 const struct file_operations def_blk_fops = {

@@ -40,7 +40,45 @@
 #include "pinconf.h"
 #include "pinctrl-rockchip.h"
 
+<<<<<<< HEAD
 /*
+ * Generate a bitmask for setting a value (v) with a write mask bit in hiword
+ * register 31:16 area.
+ */
+#define WRITE_MASK_VAL(h, l, v) \
+	(GENMASK(((h) + 16), ((l) + 16)) | (((v) << (l)) & GENMASK((h), (l))))
+=======
+/* GPIO control registers */
+#define GPIO_SWPORT_DR		0x00
+#define GPIO_SWPORT_DDR		0x04
+#define GPIO_INTEN		0x30
+#define GPIO_INTMASK		0x34
+#define GPIO_INTTYPE_LEVEL	0x38
+#define GPIO_INT_POLARITY	0x3c
+#define GPIO_INT_STATUS		0x40
+#define GPIO_INT_RAWSTATUS	0x44
+#define GPIO_DEBOUNCE		0x48
+#define GPIO_PORTS_EOI		0x4c
+#define GPIO_EXT_PORT		0x50
+#define GPIO_LS_SYNC		0x60
+
+enum rockchip_pinctrl_type {
+	PX30,
+	RV1108,
+	RK2928,
+	RK3066B,
+	RK3128,
+	RK3188,
+	RK3288,
+	RK3308,
+	RK3368,
+	RK3399,
+	RK3568,
+};
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
+
+
+/**
  * Generate a bitmask for setting a value (v) with a write mask bit in hiword
  * register 31:16 area.
  */
@@ -222,6 +260,34 @@
 		.route_val	= VAL,					\
 		.route_location	= FLAG,					\
 	}
+<<<<<<< HEAD
+=======
+
+#define RK_MUXROUTE_SAME(ID, PIN, FUNC, REG, VAL)	\
+	PIN_BANK_MUX_ROUTE_FLAGS(ID, PIN, FUNC, REG, VAL, ROCKCHIP_ROUTE_SAME)
+
+#define RK_MUXROUTE_GRF(ID, PIN, FUNC, REG, VAL)	\
+	PIN_BANK_MUX_ROUTE_FLAGS(ID, PIN, FUNC, REG, VAL, ROCKCHIP_ROUTE_GRF)
+
+#define RK_MUXROUTE_PMU(ID, PIN, FUNC, REG, VAL)	\
+	PIN_BANK_MUX_ROUTE_FLAGS(ID, PIN, FUNC, REG, VAL, ROCKCHIP_ROUTE_PMU)
+
+/**
+ * struct rockchip_mux_recalced_data: represent a pin iomux data.
+ * @num: bank number.
+ * @pin: pin number.
+ * @bit: index at register.
+ * @reg: register offset.
+ * @mask: mask bit
+ */
+struct rockchip_mux_recalced_data {
+	u8 num;
+	u8 pin;
+	u32 reg;
+	u8 bit;
+	u8 mask;
+};
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 #define S_PIN_BANK_FLAGS(ID, PIN, LABEL, MTYPE, DTYPE)			\
 	PIN_BANK_IOMUX_DRV_FLAGS_OFFSET(ID, PIN, LABEL,			\
@@ -591,34 +657,65 @@ static struct rockchip_mux_recalced_data rk3308_mux_recalced_data[] = {
 		.bit = 8,
 		.mask = 0xf
 	}, {
+<<<<<<< HEAD
 		/* gpio2a2_sel_plus */
+=======
+		/* gpio3b4_sel */
+		.num = 3,
+		.pin = 12,
+		.reg = 0x68,
+		.bit = 8,
+		.mask = 0xf
+	}, {
+		/* gpio3b5_sel */
+		.num = 3,
+		.pin = 13,
+		.reg = 0x68,
+		.bit = 12,
+		.mask = 0xf
+	}, {
+		/* gpio2a2_sel */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		.num = 2,
 		.pin = 2,
-		.reg = 0x608,
-		.bit = 0,
-		.mask = 0x7
+		.reg = 0x40,
+		.bit = 4,
+		.mask = 0x3
 	}, {
+<<<<<<< HEAD
 		/* gpio2a3_sel_plus */
+=======
+		/* gpio2a3_sel */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		.num = 2,
 		.pin = 3,
-		.reg = 0x608,
-		.bit = 4,
-		.mask = 0x7
+		.reg = 0x40,
+		.bit = 6,
+		.mask = 0x3
 	}, {
+<<<<<<< HEAD
 		/* gpio2c0_sel_plus */
+=======
+		/* gpio2c0_sel */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		.num = 2,
 		.pin = 16,
-		.reg = 0x610,
-		.bit = 8,
-		.mask = 0x7
+		.reg = 0x50,
+		.bit = 0,
+		.mask = 0x3
 	}, {
+<<<<<<< HEAD
 		/* gpio3b2_sel_plus */
+=======
+		/* gpio3b2_sel */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		.num = 3,
 		.pin = 10,
-		.reg = 0x610,
-		.bit = 0,
-		.mask = 0x7
+		.reg = 0x68,
+		.bit = 4,
+		.mask = 0x3
 	}, {
+<<<<<<< HEAD
 		/* gpio3b3_sel_plus */
 		.num = 3,
 		.pin = 11,
@@ -639,6 +736,14 @@ static struct rockchip_mux_recalced_data rk3308_mux_recalced_data[] = {
 		.reg = 0x68,
 		.bit = 12,
 		.mask = 0xf
+=======
+		/* gpio3b3_sel */
+		.num = 3,
+		.pin = 11,
+		.reg = 0x68,
+		.bit = 6,
+		.mask = 0x3
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	},
 };
 
@@ -932,9 +1037,13 @@ static struct rockchip_mux_route_data rk3328_mux_route_data[] = {
 	RK_MUXROUTE_SAME(2, RK_PC3, 2, 0x50, BIT(16 + 3)), /* pdm_sdi0m0 */
 	RK_MUXROUTE_SAME(1, RK_PC7, 3, 0x50, BIT(16 + 3) | BIT(3)), /* pdm_sdi0m1 */
 	RK_MUXROUTE_SAME(3, RK_PA2, 4, 0x50, BIT(16 + 4) | BIT(16 + 5) | BIT(5)), /* spi_rxdm2 */
+<<<<<<< HEAD
 	RK_MUXROUTE_SAME(1, RK_PC6, 1, 0x50, BIT(16 + 6)), /* i2s2_sclkm0 */
 	RK_MUXROUTE_SAME(1, RK_PD0, 1, 0x50, BIT(16 + 6)), /* i2s2_sdim0 */
 	RK_MUXROUTE_SAME(3, RK_PA0, 6, 0x50, BIT(16 + 6) | BIT(6)), /* i2s2_sclkm1 */
+=======
+	RK_MUXROUTE_SAME(1, RK_PD0, 1, 0x50, BIT(16 + 6)), /* i2s2_sdim0 */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	RK_MUXROUTE_SAME(3, RK_PA2, 6, 0x50, BIT(16 + 6) | BIT(6)), /* i2s2_sdim1 */
 	RK_MUXROUTE_SAME(2, RK_PC6, 3, 0x50, BIT(16 + 7) | BIT(7)), /* card_iom1 */
 	RK_MUXROUTE_SAME(2, RK_PC0, 3, 0x50, BIT(16 + 8) | BIT(8)), /* tsp_d5m1 */
@@ -966,7 +1075,10 @@ static struct rockchip_mux_route_data rk3568_mux_route_data[] = {
 	RK_MUXROUTE_GRF(0, RK_PC2, 2, 0x0300, WRITE_MASK_VAL(6, 6, 1)), /* HPDIN IO mux M1 */
 	RK_MUXROUTE_GRF(3, RK_PB1, 3, 0x0300, WRITE_MASK_VAL(8, 8, 0)), /* GMAC1 IO mux M0 */
 	RK_MUXROUTE_GRF(4, RK_PA7, 3, 0x0300, WRITE_MASK_VAL(8, 8, 1)), /* GMAC1 IO mux M1 */
+<<<<<<< HEAD
 	RK_MUXROUTE_GRF(4, RK_PB7, 3, 0x0300, WRITE_MASK_VAL(8, 8, 1)), /* GMAC1 IO mux M1 */
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	RK_MUXROUTE_GRF(4, RK_PD1, 1, 0x0300, WRITE_MASK_VAL(10, 10, 0)), /* HDMITX IO mux M0 */
 	RK_MUXROUTE_GRF(0, RK_PC7, 1, 0x0300, WRITE_MASK_VAL(10, 10, 1)), /* HDMITX IO mux M1 */
 	RK_MUXROUTE_GRF(0, RK_PB6, 1, 0x0300, WRITE_MASK_VAL(14, 14, 0)), /* I2C2 IO mux M0 */
@@ -1023,6 +1135,7 @@ static struct rockchip_mux_route_data rk3568_mux_route_data[] = {
 	RK_MUXROUTE_GRF(2, RK_PB0, 3, 0x0310, WRITE_MASK_VAL(9, 8, 0)), /* UART9 IO mux M0 */
 	RK_MUXROUTE_GRF(4, RK_PC5, 4, 0x0310, WRITE_MASK_VAL(9, 8, 1)), /* UART9 IO mux M1 */
 	RK_MUXROUTE_GRF(4, RK_PA4, 4, 0x0310, WRITE_MASK_VAL(9, 8, 2)), /* UART9 IO mux M2 */
+<<<<<<< HEAD
 	RK_MUXROUTE_GRF(1, RK_PA2, 1, 0x0310, WRITE_MASK_VAL(11, 10, 0)), /* I2S1 MCLK   mux M0 */
 	RK_MUXROUTE_GRF(1, RK_PA4, 1, 0x0310, WRITE_MASK_VAL(11, 10, 0)), /* I2S1 SCLKRX mux M0 */
 	RK_MUXROUTE_GRF(1, RK_PA3, 1, 0x0310, WRITE_MASK_VAL(11, 10, 0)), /* I2S1 SCLKTX mux M0 */
@@ -1042,6 +1155,15 @@ static struct rockchip_mux_route_data rk3568_mux_route_data[] = {
 	RK_MUXROUTE_GRF(3, RK_PA3, 4, 0x0310, WRITE_MASK_VAL(14, 14, 0)), /* I2S3 SCLK   mux M0 */
 	RK_MUXROUTE_GRF(4, RK_PC2, 5, 0x0310, WRITE_MASK_VAL(14, 14, 1)), /* I2S3 MCLK   mux M1 */
 	RK_MUXROUTE_GRF(4, RK_PC3, 5, 0x0310, WRITE_MASK_VAL(14, 14, 1)), /* I2S3 SCLK   mux M1 */
+=======
+	RK_MUXROUTE_GRF(1, RK_PA2, 1, 0x0310, WRITE_MASK_VAL(11, 10, 0)), /* I2S1 IO mux M0 */
+	RK_MUXROUTE_GRF(3, RK_PC6, 4, 0x0310, WRITE_MASK_VAL(11, 10, 1)), /* I2S1 IO mux M1 */
+	RK_MUXROUTE_GRF(2, RK_PD0, 5, 0x0310, WRITE_MASK_VAL(11, 10, 2)), /* I2S1 IO mux M2 */
+	RK_MUXROUTE_GRF(2, RK_PC1, 1, 0x0310, WRITE_MASK_VAL(12, 12, 0)), /* I2S2 IO mux M0 */
+	RK_MUXROUTE_GRF(4, RK_PB6, 5, 0x0310, WRITE_MASK_VAL(12, 12, 1)), /* I2S2 IO mux M1 */
+	RK_MUXROUTE_GRF(3, RK_PA2, 4, 0x0310, WRITE_MASK_VAL(14, 14, 0)), /* I2S3 IO mux M0 */
+	RK_MUXROUTE_GRF(4, RK_PC2, 5, 0x0310, WRITE_MASK_VAL(14, 14, 1)), /* I2S3 IO mux M1 */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	RK_MUXROUTE_GRF(1, RK_PA4, 3, 0x0314, WRITE_MASK_VAL(1, 0, 0)), /* PDM IO mux M0 */
 	RK_MUXROUTE_GRF(1, RK_PA6, 3, 0x0314, WRITE_MASK_VAL(1, 0, 0)), /* PDM IO mux M0 */
 	RK_MUXROUTE_GRF(3, RK_PD6, 5, 0x0314, WRITE_MASK_VAL(1, 0, 1)), /* PDM IO mux M1 */
@@ -2885,6 +3007,68 @@ static int rk3588_calc_schmitt_reg_and_bit(struct rockchip_pin_bank *bank,
 	return 0;
 }
 
+#define RK3568_PULL_PMU_OFFSET		0x20
+#define RK3568_PULL_GRF_OFFSET		0x80
+#define RK3568_PULL_BITS_PER_PIN	2
+#define RK3568_PULL_PINS_PER_REG	8
+#define RK3568_PULL_BANK_STRIDE		0x10
+
+static void rk3568_calc_pull_reg_and_bit(struct rockchip_pin_bank *bank,
+					 int pin_num, struct regmap **regmap,
+					 int *reg, u8 *bit)
+{
+	struct rockchip_pinctrl *info = bank->drvdata;
+
+	if (bank->bank_num == 0) {
+		*regmap = info->regmap_pmu;
+		*reg = RK3568_PULL_PMU_OFFSET;
+		*reg += bank->bank_num * RK3568_PULL_BANK_STRIDE;
+		*reg += ((pin_num / RK3568_PULL_PINS_PER_REG) * 4);
+
+		*bit = pin_num % RK3568_PULL_PINS_PER_REG;
+		*bit *= RK3568_PULL_BITS_PER_PIN;
+	} else {
+		*regmap = info->regmap_base;
+		*reg = RK3568_PULL_GRF_OFFSET;
+		*reg += (bank->bank_num - 1) * RK3568_PULL_BANK_STRIDE;
+		*reg += ((pin_num / RK3568_PULL_PINS_PER_REG) * 4);
+
+		*bit = (pin_num % RK3568_PULL_PINS_PER_REG);
+		*bit *= RK3568_PULL_BITS_PER_PIN;
+	}
+}
+
+#define RK3568_DRV_PMU_OFFSET		0x70
+#define RK3568_DRV_GRF_OFFSET		0x200
+#define RK3568_DRV_BITS_PER_PIN		8
+#define RK3568_DRV_PINS_PER_REG		2
+#define RK3568_DRV_BANK_STRIDE		0x40
+
+static void rk3568_calc_drv_reg_and_bit(struct rockchip_pin_bank *bank,
+					int pin_num, struct regmap **regmap,
+					int *reg, u8 *bit)
+{
+	struct rockchip_pinctrl *info = bank->drvdata;
+
+	/* The first 32 pins of the first bank are located in PMU */
+	if (bank->bank_num == 0) {
+		*regmap = info->regmap_pmu;
+		*reg = RK3568_DRV_PMU_OFFSET;
+		*reg += ((pin_num / RK3568_DRV_PINS_PER_REG) * 4);
+
+		*bit = pin_num % RK3568_DRV_PINS_PER_REG;
+		*bit *= RK3568_DRV_BITS_PER_PIN;
+	} else {
+		*regmap = info->regmap_base;
+		*reg = RK3568_DRV_GRF_OFFSET;
+		*reg += (bank->bank_num - 1) * RK3568_DRV_BANK_STRIDE;
+		*reg += ((pin_num / RK3568_DRV_PINS_PER_REG) * 4);
+
+		*bit = (pin_num % RK3568_DRV_PINS_PER_REG);
+		*bit *= RK3568_DRV_BITS_PER_PIN;
+	}
+}
+
 static int rockchip_perpin_drv_list[DRV_TYPE_MAX][8] = {
 	{ 2, 4, 8, 12, -1, -1, -1, -1 },
 	{ 3, 6, 9, 12, -1, -1, -1, -1 },
@@ -3003,6 +3187,7 @@ static int rockchip_set_drive_perpin(struct rockchip_pin_bank *bank,
 	dev_dbg(dev, "setting drive of GPIO%d-%d to %d\n",
 		bank->bank_num, pin_num, strength);
 
+<<<<<<< HEAD
 	ret = ctrl->drv_calc_reg(bank, pin_num, &regmap, &reg, &bit);
 	if (ret)
 		return ret;
@@ -3015,6 +3200,10 @@ static int rockchip_set_drive_perpin(struct rockchip_pin_bank *bank,
 		   ctrl->type == RK3528 ||
 		   ctrl->type == RK3562 ||
 		   ctrl->type == RK3568) {
+=======
+	ctrl->drv_calc_reg(bank, pin_num, &regmap, &reg, &bit);
+	if (ctrl->type == RK3568) {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		rmask_bits = RK3568_DRV_BITS_PER_PIN;
 		ret = (1 << (strength + 1)) - 1;
 		goto config;
@@ -3186,13 +3375,25 @@ static int rockchip_get_pull(struct rockchip_pin_bank *bank, int pin_num)
 	case RK3308:
 	case RK3368:
 	case RK3399:
+<<<<<<< HEAD
 	case RK3528:
 	case RK3562:
 	case RK3568:
 	case RK3588:
+=======
+	case RK3568:
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		pull_type = bank->pull_type[pin_num / 8];
 		data >>= bit;
 		data &= (1 << RK3188_PULL_BITS_PER_PIN) - 1;
+		/*
+		 * In the TRM, pull-up being 1 for everything except the GPIO0_D3-D6,
+		 * where that pull up value becomes 3.
+		 */
+		if (ctrl->type == RK3568 && bank->bank_num == 0 && pin_num >= 27 && pin_num <= 30) {
+			if (data == 3)
+				data = 1;
+		}
 
 		return rockchip_pull_list[pull_type][data];
 	default:
@@ -3240,10 +3441,14 @@ static int rockchip_set_pull(struct rockchip_pin_bank *bank,
 	case RK3308:
 	case RK3368:
 	case RK3399:
+<<<<<<< HEAD
 	case RK3528:
 	case RK3562:
 	case RK3568:
 	case RK3588:
+=======
+	case RK3568:
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		pull_type = bank->pull_type[pin_num / 8];
 		ret = -EINVAL;
 		for (i = 0; i < ARRAY_SIZE(rockchip_pull_list[pull_type]);
@@ -3352,7 +3557,10 @@ static int rockchip_get_schmitt(struct rockchip_pin_bank *bank, int pin_num)
 
 	data >>= bit;
 	switch (ctrl->type) {
+<<<<<<< HEAD
 	case RK3562:
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	case RK3568:
 		return data & ((1 << RK3568_SCHMITT_BITS_PER_PIN) - 1);
 	default:
@@ -3382,7 +3590,10 @@ static int rockchip_set_schmitt(struct rockchip_pin_bank *bank,
 
 	/* enable the write to the equivalent lower bits */
 	switch (ctrl->type) {
+<<<<<<< HEAD
 	case RK3562:
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	case RK3568:
 		data = ((1 << RK3568_SCHMITT_BITS_PER_PIN) - 1) << (bit + 16);
 		rmask = data | (data >> 16);
@@ -3393,6 +3604,7 @@ static int rockchip_set_schmitt(struct rockchip_pin_bank *bank,
 		rmask = BIT(bit + 16) | BIT(bit);
 		break;
 	}
+<<<<<<< HEAD
 
 	return regmap_update_bits(regmap, reg, rmask, data);
 }
@@ -3476,6 +3688,8 @@ static int rockchip_set_slew_rate(struct rockchip_pin_bank *bank,
 	/* enable the write to the equivalent lower bits */
 	data = BIT(bit + 16) | (speed << bit);
 	rmask = BIT(bit + 16) | BIT(bit);
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	return regmap_update_bits(regmap, reg, rmask, data);
 }
@@ -3578,10 +3792,14 @@ static bool rockchip_pinconf_pull_valid(struct rockchip_pin_ctrl *ctrl,
 	case RK3308:
 	case RK3368:
 	case RK3399:
+<<<<<<< HEAD
 	case RK3528:
 	case RK3562:
 	case RK3568:
 	case RK3588:
+=======
+	case RK3568:
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		return (pull != PIN_CONFIG_BIAS_PULL_PIN_DEFAULT);
 	}
 
@@ -3886,6 +4104,7 @@ static int rockchip_pinctrl_parse_groups(struct device_node *np,
 		np_config = of_find_node_by_phandle(be32_to_cpup(phandle));
 		ret = pinconf_generic_parse_dt_config(np_config, NULL,
 				&grp->data[j].configs, &grp->data[j].nconfigs);
+		of_node_put(np_config);
 		if (ret)
 			return ret;
 	}
@@ -4868,6 +5087,7 @@ static struct rockchip_pin_ctrl rk3399_pin_ctrl __maybe_unused = {
 		.drv_calc_reg		= rk3399_calc_drv_reg_and_bit,
 };
 
+<<<<<<< HEAD
 static struct rockchip_pin_bank rk3528_pin_banks[] = {
 	PIN_BANK_IOMUX_FLAGS_OFFSET(0, 32, "gpio0",
 				    IOMUX_WIDTH_4BIT,
@@ -4954,6 +5174,8 @@ static struct rockchip_pin_ctrl rk3562_pin_ctrl __maybe_unused = {
 	.schmitt_calc_reg	= rk3562_calc_schmitt_reg_and_bit,
 };
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 static struct rockchip_pin_bank rk3568_pin_banks[] = {
 	PIN_BANK_IOMUX_FLAGS(0, 32, "gpio0", IOMUX_SOURCE_PMU | IOMUX_WIDTH_4BIT,
 					     IOMUX_SOURCE_PMU | IOMUX_WIDTH_4BIT,
@@ -4977,7 +5199,11 @@ static struct rockchip_pin_bank rk3568_pin_banks[] = {
 					     IOMUX_WIDTH_4BIT),
 };
 
+<<<<<<< HEAD
 static struct rockchip_pin_ctrl rk3568_pin_ctrl __maybe_unused = {
+=======
+static struct rockchip_pin_ctrl rk3568_pin_ctrl = {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	.pin_banks		= rk3568_pin_banks,
 	.nr_banks		= ARRAY_SIZE(rk3568_pin_banks),
 	.label			= "RK3568-GPIO",
@@ -4990,6 +5216,7 @@ static struct rockchip_pin_ctrl rk3568_pin_ctrl __maybe_unused = {
 	.niomux_routes		= ARRAY_SIZE(rk3568_mux_route_data),
 	.pull_calc_reg		= rk3568_calc_pull_reg_and_bit,
 	.drv_calc_reg		= rk3568_calc_drv_reg_and_bit,
+<<<<<<< HEAD
 	.slew_rate_calc_reg	= rk3568_calc_slew_rate_reg_and_bit,
 	.schmitt_calc_reg	= rk3568_calc_schmitt_reg_and_bit,
 };
@@ -5017,6 +5244,11 @@ static struct rockchip_pin_ctrl rk3588_pin_ctrl __maybe_unused = {
 	.schmitt_calc_reg	= rk3588_calc_schmitt_reg_and_bit,
 };
 
+=======
+	.schmitt_calc_reg	= rk3568_calc_schmitt_reg_and_bit,
+};
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 static const struct of_device_id rockchip_pinctrl_dt_match[] = {
 #ifdef CONFIG_CPU_PX30
 	{ .compatible = "rockchip,px30-pinctrl",
@@ -5083,6 +5315,7 @@ static const struct of_device_id rockchip_pinctrl_dt_match[] = {
 #ifdef CONFIG_CPU_RK3399
 	{ .compatible = "rockchip,rk3399-pinctrl",
 		.data = &rk3399_pin_ctrl },
+<<<<<<< HEAD
 #endif
 #ifdef CONFIG_CPU_RK3528
 	{ .compatible = "rockchip,rk3528-pinctrl",
@@ -5100,6 +5333,10 @@ static const struct of_device_id rockchip_pinctrl_dt_match[] = {
 	{ .compatible = "rockchip,rk3588-pinctrl",
 		.data = &rk3588_pin_ctrl },
 #endif
+=======
+	{ .compatible = "rockchip,rk3568-pinctrl",
+		.data = &rk3568_pin_ctrl },
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	{},
 };
 

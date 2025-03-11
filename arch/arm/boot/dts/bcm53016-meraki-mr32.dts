@@ -212,7 +212,11 @@
 
 			fixed-link {
 				speed = <1000>;
+<<<<<<< HEAD
 				duplex-full;
+=======
+				full-duplex;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			};
 		};
 	};

@@ -250,8 +250,12 @@ void exfat_truncate(struct inode *inode, loff_t size)
 	else
 		mark_inode_dirty(inode);
 
+<<<<<<< HEAD
 	inode->i_blocks = round_up(i_size_read(inode), sbi->cluster_size) >>
 				inode->i_blkbits;
+=======
+	inode->i_blocks = round_up(i_size_read(inode), sbi->cluster_size) >> 9;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 write_size:
 	aligned_size = i_size_read(inode);
 	if (aligned_size & (blocksize - 1)) {

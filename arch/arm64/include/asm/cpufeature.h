@@ -613,7 +613,10 @@ static inline bool cpu_supports_mixed_endian_el0(void)
 	return id_aa64mmfr0_mixed_endian_el0(read_cpuid(ID_AA64MMFR0_EL1));
 }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 static inline bool supports_csv2p3(int scope)
 {
 	u64 pfr0;
@@ -642,9 +645,12 @@ static inline bool supports_clearbhb(int scope)
 						    ID_AA64ISAR2_CLEARBHB_SHIFT);
 }
 
+<<<<<<< HEAD
 const struct cpumask *system_32bit_el0_cpumask(void);
 DECLARE_STATIC_KEY_FALSE(arm64_mismatched_32bit_el0);
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 static inline bool system_supports_32bit_el0(void)
 {
 	u64 pfr0 = read_sanitised_ftr_reg(SYS_ID_AA64PFR0_EL1);
@@ -778,7 +784,8 @@ static inline bool system_supports_tlb_range(void)
 		cpus_have_const_cap(ARM64_HAS_TLB_RANGE);
 }
 
-extern int do_emulate_mrs(struct pt_regs *regs, u32 sys_reg, u32 rt);
+int do_emulate_mrs(struct pt_regs *regs, u32 sys_reg, u32 rt);
+bool try_emulate_mrs(struct pt_regs *regs, u32 isn);
 
 static inline u32 id_aa64mmfr0_parange_to_phys_shift(int parange)
 {

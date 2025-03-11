@@ -1148,7 +1148,11 @@ out:
 
 u64 bpf_jit_alloc_exec_limit(void)
 {
+<<<<<<< HEAD
 	return VMALLOC_END - VMALLOC_START;
+=======
+	return BPF_JIT_REGION_SIZE;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 void *bpf_jit_alloc_exec(unsigned long size)

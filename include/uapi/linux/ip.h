@@ -18,6 +18,7 @@
 #ifndef _UAPI_LINUX_IP_H
 #define _UAPI_LINUX_IP_H
 #include <linux/types.h>
+#include <linux/stddef.h>
 #include <asm/byteorder.h>
 
 #define IPTOS_TOS_MASK		0x1E
@@ -100,6 +101,7 @@ struct iphdr {
 	__u8	ttl;
 	__u8	protocol;
 	__sum16	check;
+<<<<<<< HEAD
 #ifndef __GENKSYMS__
 	__struct_group(/* no tag */, addrs, /* no attrs */,
 #endif
@@ -108,6 +110,12 @@ struct iphdr {
 #ifndef __GENKSYMS__
 	);
 #endif
+=======
+	__struct_group(/* no tag */, addrs, /* no attrs */,
+		__be32	saddr;
+		__be32	daddr;
+	);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	/*The options start here. */
 };
 

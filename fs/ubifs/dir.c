@@ -349,15 +349,89 @@ out_budg:
 	return err;
 }
 
-static int do_tmpfile(struct inode *dir, struct dentry *dentry,
-		      umode_t mode, struct inode **whiteout)
+static struct inode *create_whiteout(struct inode *dir, struct dentry *dentry)
+{
+	int err;
+	umode_t mode = S_IFCHR | WHITEOUT_MODE;
+	struct inode *inode;
+	struct ubifs_info *c = dir->i_sb->s_fs_info;
+	struct fscrypt_name nm;
+
+	/*
+	 * Create an inode('nlink = 1') for whiteout without updating journal,
+	 * let ubifs_jnl_rename() store it on flash to complete rename whiteout
+	 * atomically.
+	 */
+
+	dbg_gen("dent '%pd', mode %#hx in dir ino %lu",
+		dentry, mode, dir->i_ino);
+
+	err = fscrypt_setup_filename(dir, &dentry->d_name, 0, &nm);
+	if (err)
+		return ERR_PTR(err);
+
+	inode = ubifs_new_inode(c, dir, mode);
+	if (IS_ERR(inode)) {
+		err = PTR_ERR(inode);
+		goto out_free;
+	}
+
+	init_special_inode(inode, inode->i_mode, WHITEOUT_DEV);
+	ubifs_assert(c, inode->i_op == &ubifs_file_inode_operations);
+
+	err = ubifs_init_security(dir, inode, &dentry->d_name);
+	if (err)
+		goto out_inode;
+
+	/* The dir size is updated by do_rename. */
+	insert_inode_hash(inode);
+
+	return inode;
+
+out_inode:
+	make_bad_inode(inode);
+	iput(inode);
+out_free:
+	fscrypt_free_filename(&nm);
+	ubifs_err(c, "cannot create whiteout file, error %d", err);
+	return ERR_PTR(err);
+}
+
+/**
+ * lock_2_inodes - a wrapper for locking two UBIFS inodes.
+ * @inode1: first inode
+ * @inode2: second inode
+ *
+ * We do not implement any tricks to guarantee strict lock ordering, because
+ * VFS has already done it for us on the @i_mutex. So this is just a simple
+ * wrapper function.
+ */
+static void lock_2_inodes(struct inode *inode1, struct inode *inode2)
+{
+	mutex_lock_nested(&ubifs_inode(inode1)->ui_mutex, WB_MUTEX_1);
+	mutex_lock_nested(&ubifs_inode(inode2)->ui_mutex, WB_MUTEX_2);
+}
+
+/**
+ * unlock_2_inodes - a wrapper for unlocking two UBIFS inodes.
+ * @inode1: first inode
+ * @inode2: second inode
+ */
+static void unlock_2_inodes(struct inode *inode1, struct inode *inode2)
+{
+	mutex_unlock(&ubifs_inode(inode2)->ui_mutex);
+	mutex_unlock(&ubifs_inode(inode1)->ui_mutex);
+}
+
+static int ubifs_tmpfile(struct inode *dir, struct dentry *dentry,
+			 umode_t mode)
 {
 	struct inode *inode;
 	struct ubifs_info *c = dir->i_sb->s_fs_info;
 	struct ubifs_budget_req req = { .new_ino = 1, .new_dent = 1,
 					.dirtied_ino = 1};
 	struct ubifs_budget_req ino_req = { .dirtied_ino = 1 };
-	struct ubifs_inode *ui, *dir_ui = ubifs_inode(dir);
+	struct ubifs_inode *ui;
 	int err, instantiated = 0;
 	struct fscrypt_name nm;
 
@@ -395,42 +469,31 @@ static int do_tmpfile(struct inode *dir, struct dentry *dentry,
 	}
 	ui = ubifs_inode(inode);
 
-	if (whiteout) {
-		init_special_inode(inode, inode->i_mode, WHITEOUT_DEV);
-		ubifs_assert(c, inode->i_op == &ubifs_file_inode_operations);
-	}
-
 	err = ubifs_init_security(dir, inode, &dentry->d_name);
 	if (err)
 		goto out_inode;
 
 	mutex_lock(&ui->ui_mutex);
 	insert_inode_hash(inode);
-
-	if (whiteout) {
-		mark_inode_dirty(inode);
-		drop_nlink(inode);
-		*whiteout = inode;
-	} else {
-		d_tmpfile(dentry, inode);
-	}
+	d_tmpfile(dentry, inode);
 	ubifs_assert(c, ui->dirty);
 
 	instantiated = 1;
 	mutex_unlock(&ui->ui_mutex);
 
-	mutex_lock(&dir_ui->ui_mutex);
+	lock_2_inodes(dir, inode);
 	err = ubifs_jnl_update(c, dir, &nm, inode, 1, 0);
 	if (err)
 		goto out_cancel;
-	mutex_unlock(&dir_ui->ui_mutex);
+	unlock_2_inodes(dir, inode);
 
 	ubifs_release_budget(c, &req);
+	fscrypt_free_filename(&nm);
 
 	return 0;
 
 out_cancel:
-	mutex_unlock(&dir_ui->ui_mutex);
+	unlock_2_inodes(dir, inode);
 out_inode:
 	make_bad_inode(inode);
 	if (!instantiated)
@@ -444,12 +507,6 @@ out_budg:
 	fscrypt_free_filename(&nm);
 	ubifs_err(c, "cannot create temporary file, error %d", err);
 	return err;
-}
-
-static int ubifs_tmpfile(struct inode *dir, struct dentry *dentry,
-			 umode_t mode)
-{
-	return do_tmpfile(dir, dentry, mode, NULL);
 }
 
 /**
@@ -663,32 +720,6 @@ static int ubifs_dir_release(struct inode *dir, struct file *file)
 	kfree(file->private_data);
 	file->private_data = NULL;
 	return 0;
-}
-
-/**
- * lock_2_inodes - a wrapper for locking two UBIFS inodes.
- * @inode1: first inode
- * @inode2: second inode
- *
- * We do not implement any tricks to guarantee strict lock ordering, because
- * VFS has already done it for us on the @i_mutex. So this is just a simple
- * wrapper function.
- */
-static void lock_2_inodes(struct inode *inode1, struct inode *inode2)
-{
-	mutex_lock_nested(&ubifs_inode(inode1)->ui_mutex, WB_MUTEX_1);
-	mutex_lock_nested(&ubifs_inode(inode2)->ui_mutex, WB_MUTEX_2);
-}
-
-/**
- * unlock_2_inodes - a wrapper for unlocking two UBIFS inodes.
- * @inode1: first inode
- * @inode2: second inode
- */
-static void unlock_2_inodes(struct inode *inode1, struct inode *inode2)
-{
-	mutex_unlock(&ubifs_inode(inode2)->ui_mutex);
-	mutex_unlock(&ubifs_inode(inode1)->ui_mutex);
 }
 
 static int ubifs_link(struct dentry *old_dentry, struct inode *dir,
@@ -1099,6 +1130,8 @@ out_cancel:
 	dir_ui->ui_size = dir->i_size;
 	mutex_unlock(&dir_ui->ui_mutex);
 out_inode:
+	/* Free inode->i_link before inode is marked as bad. */
+	fscrypt_free_inode(inode);
 	make_bad_inode(inode);
 	iput(inode);
 out_fname:
@@ -1118,7 +1151,6 @@ static int ubifs_symlink(struct inode *dir, struct dentry *dentry,
 	int err, sz_change, len = strlen(symname);
 	struct fscrypt_str disk_link;
 	struct ubifs_budget_req req = { .new_ino = 1, .new_dent = 1,
-					.new_ino_d = ALIGN(len, 8),
 					.dirtied_ino = 1 };
 	struct fscrypt_name nm;
 
@@ -1134,6 +1166,7 @@ static int ubifs_symlink(struct inode *dir, struct dentry *dentry,
 	 * Budget request settings: new inode, new direntry and changing parent
 	 * directory inode.
 	 */
+	req.new_ino_d = ALIGN(disk_link.len - 1, 8);
 	err = ubifs_budget_space(c, &req);
 	if (err)
 		return err;
@@ -1269,17 +1302,19 @@ static int do_rename(struct inode *old_dir, struct dentry *old_dentry,
 					.dirtied_ino = 3 };
 	struct ubifs_budget_req ino_req = { .dirtied_ino = 1,
 			.dirtied_ino_d = ALIGN(old_inode_ui->data_len, 8) };
+	struct ubifs_budget_req wht_req;
 	struct timespec64 time;
 	unsigned int saved_nlink;
 	struct fscrypt_name old_nm, new_nm;
 
 	/*
-	 * Budget request settings: deletion direntry, new direntry, removing
-	 * the old inode, and changing old and new parent directory inodes.
+	 * Budget request settings:
+	 *   req: deletion direntry, new direntry, removing the old inode,
+	 *   and changing old and new parent directory inodes.
 	 *
-	 * However, this operation also marks the target inode as dirty and
-	 * does not write it, so we allocate budget for the target inode
-	 * separately.
+	 *   wht_req: new whiteout inode for RENAME_WHITEOUT.
+	 *
+	 *   ino_req: marks the target inode as dirty and does not write it.
 	 */
 
 	dbg_gen("dent '%pd' ino %lu in dir ino %lu to dent '%pd' in dir ino %lu flags 0x%x",
@@ -1289,6 +1324,8 @@ static int do_rename(struct inode *old_dir, struct dentry *old_dentry,
 	if (unlink) {
 		ubifs_assert(c, inode_is_locked(new_inode));
 
+		/* Budget for old inode's data when its nlink > 1. */
+		req.dirtied_ino_d = ALIGN(ubifs_inode(new_inode)->data_len, 8);
 		err = ubifs_purge_xattrs(new_inode);
 		if (err)
 			return err;
@@ -1337,15 +1374,17 @@ static int do_rename(struct inode *old_dir, struct dentry *old_dentry,
 			goto out_release;
 		}
 
-		err = do_tmpfile(old_dir, old_dentry, S_IFCHR | WHITEOUT_MODE, &whiteout);
-		if (err) {
+		/*
+		 * The whiteout inode without dentry is pinned in memory,
+		 * umount won't happen during rename process because we
+		 * got parent dentry.
+		 */
+		whiteout = create_whiteout(old_dir, old_dentry);
+		if (IS_ERR(whiteout)) {
+			err = PTR_ERR(whiteout);
 			kfree(dev);
 			goto out_release;
 		}
-
-		spin_lock(&whiteout->i_lock);
-		whiteout->i_state |= I_LINKABLE;
-		spin_unlock(&whiteout->i_lock);
 
 		whiteout_ui = ubifs_inode(whiteout);
 		whiteout_ui->data = dev;
@@ -1353,8 +1392,13 @@ static int do_rename(struct inode *old_dir, struct dentry *old_dentry,
 		ubifs_assert(c, !whiteout_ui->dirty);
 
 		memset(&wht_req, 0, sizeof(struct ubifs_budget_req));
+<<<<<<< HEAD
 		wht_req.dirtied_ino = 1;
 		wht_req.dirtied_ino_d = ALIGN(whiteout_ui->data_len, 8);
+=======
+		wht_req.new_ino = 1;
+		wht_req.new_ino_d = ALIGN(whiteout_ui->data_len, 8);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		/*
 		 * To avoid deadlock between space budget (holds ui_mutex and
 		 * waits wb work) and writeback work(waits ui_mutex), do space
@@ -1362,6 +1406,14 @@ static int do_rename(struct inode *old_dir, struct dentry *old_dentry,
 		 */
 		err = ubifs_budget_space(c, &wht_req);
 		if (err) {
+<<<<<<< HEAD
+=======
+			/*
+			 * Whiteout inode can not be written on flash by
+			 * ubifs_jnl_write_inode(), because it's neither
+			 * dirty nor zero-nlink.
+			 */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			iput(whiteout);
 			goto out_release;
 		}
@@ -1439,6 +1491,7 @@ static int do_rename(struct inode *old_dir, struct dentry *old_dentry,
 		sync = IS_DIRSYNC(old_dir) || IS_DIRSYNC(new_dir);
 		if (unlink && IS_SYNC(new_inode))
 			sync = 1;
+<<<<<<< HEAD
 	}
 
 	if (whiteout) {
@@ -1450,6 +1503,13 @@ static int do_rename(struct inode *old_dir, struct dentry *old_dentry,
 		spin_unlock(&whiteout->i_lock);
 
 		iput(whiteout);
+=======
+		/*
+		 * S_SYNC flag of whiteout inherits from the old_dir, and we
+		 * have already checked the old dir inode. So there is no need
+		 * to check whiteout.
+		 */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	}
 
 	err = ubifs_jnl_rename(c, old_dir, old_inode, &old_nm, new_dir,
@@ -1460,6 +1520,11 @@ static int do_rename(struct inode *old_dir, struct dentry *old_dentry,
 	unlock_4_inodes(old_dir, new_dir, new_inode, whiteout);
 	ubifs_release_budget(c, &req);
 
+	if (whiteout) {
+		ubifs_release_budget(c, &wht_req);
+		iput(whiteout);
+	}
+
 	mutex_lock(&old_inode_ui->ui_mutex);
 	release = old_inode_ui->dirty;
 	mark_inode_dirty_sync(old_inode);
@@ -1468,11 +1533,16 @@ static int do_rename(struct inode *old_dir, struct dentry *old_dentry,
 	if (release)
 		ubifs_release_budget(c, &ino_req);
 	if (IS_SYNC(old_inode))
-		err = old_inode->i_sb->s_op->write_inode(old_inode, NULL);
+		/*
+		 * Rename finished here. Although old inode cannot be updated
+		 * on flash, old ctime is not a big problem, don't return err
+		 * code to userspace.
+		 */
+		old_inode->i_sb->s_op->write_inode(old_inode, NULL);
 
 	fscrypt_free_filename(&old_nm);
 	fscrypt_free_filename(&new_nm);
-	return err;
+	return 0;
 
 out_cancel:
 	if (unlink) {
@@ -1493,11 +1563,11 @@ out_cancel:
 				inc_nlink(old_dir);
 		}
 	}
+	unlock_4_inodes(old_dir, new_dir, new_inode, whiteout);
 	if (whiteout) {
-		drop_nlink(whiteout);
+		ubifs_release_budget(c, &wht_req);
 		iput(whiteout);
 	}
-	unlock_4_inodes(old_dir, new_dir, new_inode, whiteout);
 out_release:
 	ubifs_release_budget(c, &ino_req);
 	ubifs_release_budget(c, &req);
@@ -1531,6 +1601,10 @@ static int ubifs_xrename(struct inode *old_dir, struct dentry *old_dentry,
 		return err;
 	}
 
+	err = ubifs_budget_space(c, &req);
+	if (err)
+		goto out;
+
 	lock_4_inodes(old_dir, new_dir, NULL, NULL);
 
 	time = current_time(old_dir);
@@ -1556,6 +1630,7 @@ static int ubifs_xrename(struct inode *old_dir, struct dentry *old_dentry,
 	unlock_4_inodes(old_dir, new_dir, NULL, NULL);
 	ubifs_release_budget(c, &req);
 
+out:
 	fscrypt_free_filename(&fst_nm);
 	fscrypt_free_filename(&snd_nm);
 	return err;

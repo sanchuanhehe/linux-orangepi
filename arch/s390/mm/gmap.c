@@ -2786,6 +2786,10 @@ int s390_replace_asce(struct gmap *gmap)
 	page = alloc_pages(GFP_KERNEL_ACCOUNT, CRST_ALLOC_ORDER);
 	if (!page)
 		return -ENOMEM;
+<<<<<<< HEAD
+=======
+	page->index = 0;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	table = page_to_virt(page);
 	memcpy(table, gmap->table, 1UL << (CRST_ALLOC_ORDER + PAGE_SHIFT));
 

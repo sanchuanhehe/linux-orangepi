@@ -96,8 +96,13 @@ static int dwc2_drd_role_sw_set(struct usb_role_switch *sw, enum usb_role role)
 	 * the clock to read/write GOTGCTL and GUSBCFG registers to override
 	 * mode and sessions. It is the case if cable is plugged at boot.
 	 */
+<<<<<<< HEAD
 	if (!hsotg->ll_hw_enabled) {
 		int ret = clk_bulk_prepare_enable(hsotg->num_clks, hsotg->clks);
+=======
+	if (!hsotg->ll_hw_enabled && hsotg->clk) {
+		int ret = clk_prepare_enable(hsotg->clk);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 		if (ret)
 			return ret;
@@ -129,8 +134,13 @@ static int dwc2_drd_role_sw_set(struct usb_role_switch *sw, enum usb_role role)
 		/* This will raise a Connector ID Status Change Interrupt */
 		dwc2_force_mode(hsotg, role == USB_ROLE_HOST);
 
+<<<<<<< HEAD
 	if (!hsotg->ll_hw_enabled)
 		clk_bulk_disable_unprepare(hsotg->num_clks, hsotg->clks);
+=======
+	if (!hsotg->ll_hw_enabled && hsotg->clk)
+		clk_disable_unprepare(hsotg->clk);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	dev_dbg(hsotg->dev, "%s-session valid\n",
 		role == USB_ROLE_NONE ? "No" :

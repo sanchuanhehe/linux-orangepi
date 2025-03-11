@@ -507,7 +507,7 @@ struct nameidata {
 	struct qstr	last;
 	struct path	root;
 	struct inode	*inode; /* path.dentry.d_inode */
-	unsigned int	flags;
+	unsigned int	flags, state;
 	unsigned	seq, m_seq, r_seq;
 	int		last_type;
 	unsigned	depth;
@@ -526,6 +526,10 @@ struct nameidata {
 	umode_t		dir_mode;
 } __randomize_layout;
 
+#define ND_ROOT_PRESET 1
+#define ND_ROOT_GRABBED 2
+#define ND_JUMPED 4
+
 static void set_nameidata(struct nameidata *p, int dfd, struct filename *name)
 {
 	struct nameidata *old = current->nameidata;
@@ -536,6 +540,7 @@ static void set_nameidata(struct nameidata *p, int dfd, struct filename *name)
 	p->path.dentry = NULL;
 	p->total_link_count = old ? old->total_link_count : 0;
 	p->saved = old;
+	p->state = 0;
 	current->nameidata = p;
 }
 
@@ -598,9 +603,9 @@ static void terminate_walk(struct nameidata *nd)
 		path_put(&nd->path);
 		for (i = 0; i < nd->depth; i++)
 			path_put(&nd->stack[i].link);
-		if (nd->flags & LOOKUP_ROOT_GRABBED) {
+		if (nd->state & ND_ROOT_GRABBED) {
 			path_put(&nd->root);
-			nd->flags &= ~LOOKUP_ROOT_GRABBED;
+			nd->state &= ~ND_ROOT_GRABBED;
 		}
 	} else {
 		nd->flags &= ~LOOKUP_RCU;
@@ -663,9 +668,9 @@ static bool legitimize_root(struct nameidata *nd)
 	if (!nd->root.mnt && (nd->flags & LOOKUP_IS_SCOPED))
 		return false;
 	/* Nothing to do if nd->root is zero or is managed by the VFS user. */
-	if (!nd->root.mnt || (nd->flags & LOOKUP_ROOT))
+	if (!nd->root.mnt || (nd->state & ND_ROOT_PRESET))
 		return true;
-	nd->flags |= LOOKUP_ROOT_GRABBED;
+	nd->state |= ND_ROOT_GRABBED;
 	return legitimize_path(nd, &nd->root, nd->root_seq);
 }
 
@@ -877,8 +882,14 @@ static int complete_walk(struct nameidata *nd)
 		 * We don't want to zero nd->root for scoped-lookups or
 		 * externally-managed nd->root.
 		 */
+<<<<<<< HEAD
 		if (!(nd->flags & (LOOKUP_ROOT | LOOKUP_IS_SCOPED)))
 			nd->root.mnt = NULL;
+=======
+		if (!(nd->state & ND_ROOT_PRESET))
+			if (!(nd->flags & LOOKUP_IS_SCOPED))
+				nd->root.mnt = NULL;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		nd->flags &= ~LOOKUP_CACHED;
 		if (!try_to_unlazy(nd))
 			return -ECHILD;
@@ -905,8 +916,12 @@ static int complete_walk(struct nameidata *nd)
 			return -EXDEV;
 	}
 
+<<<<<<< HEAD
 	if (likely(!(nd->flags & LOOKUP_JUMPED))) {
 		success_walk_trace(nd);
+=======
+	if (likely(!(nd->state & ND_JUMPED)))
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		return 0;
 	}
 
@@ -949,7 +964,7 @@ static int set_root(struct nameidata *nd)
 		} while (read_seqcount_retry(&fs->seq, seq));
 	} else {
 		get_fs_root(fs, &nd->root);
-		nd->flags |= LOOKUP_ROOT_GRABBED;
+		nd->state |= ND_ROOT_GRABBED;
 	}
 	return 0;
 }
@@ -982,7 +997,7 @@ static int nd_jump_root(struct nameidata *nd)
 		path_get(&nd->path);
 		nd->inode = nd->path.dentry->d_inode;
 	}
-	nd->flags |= LOOKUP_JUMPED;
+	nd->state |= ND_JUMPED;
 	return 0;
 }
 
@@ -1010,7 +1025,7 @@ int nd_jump_link(struct path *path)
 	path_put(&nd->path);
 	nd->path = *path;
 	nd->inode = nd->path.dentry->d_inode;
-	nd->flags |= LOOKUP_JUMPED;
+	nd->state |= ND_JUMPED;
 	return 0;
 
 err:
@@ -1432,7 +1447,7 @@ static bool __follow_mount_rcu(struct nameidata *nd, struct path *path,
 			if (mounted) {
 				path->mnt = &mounted->mnt;
 				dentry = path->dentry = mounted->mnt.mnt_root;
-				nd->flags |= LOOKUP_JUMPED;
+				nd->state |= ND_JUMPED;
 				*seqp = read_seqcount_begin(&dentry->d_seq);
 				*inode = dentry->d_inode;
 				/*
@@ -1479,7 +1494,7 @@ static inline int handle_mounts(struct nameidata *nd, struct dentry *dentry,
 		if (unlikely(nd->flags & LOOKUP_NO_XDEV))
 			ret = -EXDEV;
 		else
-			nd->flags |= LOOKUP_JUMPED;
+			nd->state |= ND_JUMPED;
 	}
 	if (unlikely(ret)) {
 		dput(path->dentry);
@@ -2225,7 +2240,7 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 			case 2:
 				if (name[1] == '.') {
 					type = LAST_DOTDOT;
-					nd->flags |= LOOKUP_JUMPED;
+					nd->state |= ND_JUMPED;
 				}
 				break;
 			case 1:
@@ -2233,7 +2248,7 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 		}
 		if (likely(type == LAST_NORM)) {
 			struct dentry *parent = nd->path.dentry;
-			nd->flags &= ~LOOKUP_JUMPED;
+			nd->state &= ~ND_JUMPED;
 			if (unlikely(parent->d_flags & DCACHE_OP_HASH)) {
 				struct qstr this = { { .hash_len = hash_len }, .name = name };
 				err = parent->d_op->d_hash(parent, &this);
@@ -2307,14 +2322,15 @@ static const char *path_init(struct nameidata *nd, unsigned flags)
 	if (flags & LOOKUP_RCU)
 		rcu_read_lock();
 
-	nd->flags = flags | LOOKUP_JUMPED;
+	nd->flags = flags;
+	nd->state |= ND_JUMPED;
 	nd->depth = 0;
 
 	nd->m_seq = __read_seqcount_begin(&mount_lock.seqcount);
 	nd->r_seq = __read_seqcount_begin(&rename_lock.seqcount);
 	smp_rmb();
 
-	if (flags & LOOKUP_ROOT) {
+	if (nd->state & ND_ROOT_PRESET) {
 		struct dentry *root = nd->root.dentry;
 		struct inode *inode = root->d_inode;
 		if (*s && unlikely(!d_can_lookup(root)))
@@ -2389,7 +2405,7 @@ static const char *path_init(struct nameidata *nd, unsigned flags)
 			nd->root_seq = nd->seq;
 		} else {
 			path_get(&nd->root);
-			nd->flags |= LOOKUP_ROOT_GRABBED;
+			nd->state |= ND_ROOT_GRABBED;
 		}
 	}
 	return s;
@@ -2428,7 +2444,7 @@ static int path_lookupat(struct nameidata *nd, unsigned flags, struct path *path
 		;
 	if (!err && unlikely(nd->flags & LOOKUP_MOUNTPOINT)) {
 		err = handle_lookup_down(nd);
-		nd->flags &= ~LOOKUP_JUMPED; // no d_weak_revalidate(), please...
+		nd->state &= ~ND_JUMPED; // no d_weak_revalidate(), please...
 	}
 	if (!err)
 		err = complete_walk(nd);
@@ -2452,11 +2468,11 @@ int filename_lookup(int dfd, struct filename *name, unsigned flags,
 	struct nameidata nd;
 	if (IS_ERR(name))
 		return PTR_ERR(name);
+	set_nameidata(&nd, dfd, name);
 	if (unlikely(root)) {
 		nd.root = *root;
-		flags |= LOOKUP_ROOT;
+		nd.state = ND_ROOT_PRESET;
 	}
-	set_nameidata(&nd, dfd, name);
 	retval = path_lookupat(&nd, flags | LOOKUP_RCU, path);
 	if (unlikely(retval == -ECHILD))
 		retval = path_lookupat(&nd, flags, path);
@@ -2724,7 +2740,7 @@ int path_pts(struct path *path)
 	dput(path->dentry);
 	path->dentry = parent;
 	child = d_hash_and_lookup(parent, &this);
-	if (!child)
+	if (IS_ERR_OR_NULL(child))
 		return -ENOENT;
 
 	path->dentry = child;
@@ -2866,8 +2882,8 @@ struct dentry *lock_rename(struct dentry *p1, struct dentry *p2)
 		return p;
 	}
 
-	inode_lock_nested(p1->d_inode, I_MUTEX_PARENT);
-	inode_lock_nested(p2->d_inode, I_MUTEX_PARENT2);
+	lock_two_inodes(p1->d_inode, p2->d_inode,
+			I_MUTEX_PARENT, I_MUTEX_PARENT2);
 	return NULL;
 }
 EXPORT_SYMBOL(lock_rename);
@@ -2882,6 +2898,63 @@ void unlock_rename(struct dentry *p1, struct dentry *p2)
 }
 EXPORT_SYMBOL(unlock_rename);
 
+/**
+ * mode_strip_umask - handle vfs umask stripping
+ * @dir:	parent directory of the new inode
+ * @mode:	mode of the new inode to be created in @dir
+ *
+ * Umask stripping depends on whether or not the filesystem supports POSIX
+ * ACLs. If the filesystem doesn't support it umask stripping is done directly
+ * in here. If the filesystem does support POSIX ACLs umask stripping is
+ * deferred until the filesystem calls posix_acl_create().
+ *
+ * Returns: mode
+ */
+static inline umode_t mode_strip_umask(const struct inode *dir, umode_t mode)
+{
+	if (!IS_POSIXACL(dir))
+		mode &= ~current_umask();
+	return mode;
+}
+
+/**
+ * vfs_prepare_mode - prepare the mode to be used for a new inode
+ * @dir:	parent directory of the new inode
+ * @mode:	mode of the new inode
+ * @mask_perms:	allowed permission by the vfs
+ * @type:	type of file to be created
+ *
+ * This helper consolidates and enforces vfs restrictions on the @mode of a new
+ * object to be created.
+ *
+ * Umask stripping depends on whether the filesystem supports POSIX ACLs (see
+ * the kernel documentation for mode_strip_umask()). Moving umask stripping
+ * after setgid stripping allows the same ordering for both non-POSIX ACL and
+ * POSIX ACL supporting filesystems.
+ *
+ * Note that it's currently valid for @type to be 0 if a directory is created.
+ * Filesystems raise that flag individually and we need to check whether each
+ * filesystem can deal with receiving S_IFDIR from the vfs before we enforce a
+ * non-zero type.
+ *
+ * Returns: mode to be passed to the filesystem
+ */
+static inline umode_t vfs_prepare_mode(const struct inode *dir, umode_t mode,
+				       umode_t mask_perms, umode_t type)
+{
+	mode = mode_strip_sgid(dir, mode);
+	mode = mode_strip_umask(dir, mode);
+
+	/*
+	 * Apply the vfs mandated allowed permission mask and set the type of
+	 * file to be created before we call into the filesystem.
+	 */
+	mode &= (mask_perms & ~S_IFMT);
+	mode |= (type & S_IFMT);
+
+	return mode;
+}
+
 int vfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		bool want_excl)
 {
@@ -2891,8 +2964,8 @@ int vfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 
 	if (!dir->i_op->create)
 		return -EACCES;	/* shouldn't it be ENOSYS? */
-	mode &= S_IALLUGO;
-	mode |= S_IFREG;
+
+	mode = vfs_prepare_mode(dir, mode, S_IALLUGO, S_IFREG);
 	error = security_inode_create(dir, dentry, mode);
 	if (error)
 		return error;
@@ -3156,8 +3229,7 @@ static struct dentry *lookup_open(struct nameidata *nd, struct file *file,
 	if (open_flag & O_CREAT) {
 		if (open_flag & O_EXCL)
 			open_flag &= ~O_TRUNC;
-		if (!IS_POSIXACL(dir->d_inode))
-			mode &= ~current_umask();
+		mode = vfs_prepare_mode(dir->d_inode, mode, mode, mode);
 		if (likely(got_write))
 			create_error = may_o_create(&nd->path, dentry, mode);
 		else
@@ -3370,8 +3442,12 @@ struct dentry *vfs_tmpfile(struct dentry *dentry, umode_t mode, int open_flag)
 	child = d_alloc(dentry, &slash_name);
 	if (unlikely(!child))
 		goto out_err;
+<<<<<<< HEAD
 	if (!IS_POSIXACL(dir))
 		mode &= ~current_umask();
+=======
+	mode = vfs_prepare_mode(dir, mode, mode, mode);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	error = dir->i_op->tmpfile(dir, child, mode);
 	if (error)
 		goto out_err;
@@ -3493,18 +3569,15 @@ struct file *do_filp_open(int dfd, struct filename *pathname,
 	return filp;
 }
 
-struct file *do_file_open_root(struct dentry *dentry, struct vfsmount *mnt,
+struct file *do_file_open_root(const struct path *root,
 		const char *name, const struct open_flags *op)
 {
 	struct nameidata nd;
 	struct file *file;
 	struct filename *filename;
-	int flags = op->lookup_flags | LOOKUP_ROOT;
+	int flags = op->lookup_flags;
 
-	nd.root.mnt = mnt;
-	nd.root.dentry = dentry;
-
-	if (d_is_symlink(dentry) && op->intent & LOOKUP_OPEN)
+	if (d_is_symlink(root->dentry) && op->intent & LOOKUP_OPEN)
 		return ERR_PTR(-ELOOP);
 
 	filename = getname_kernel(name);
@@ -3512,6 +3585,8 @@ struct file *do_file_open_root(struct dentry *dentry, struct vfsmount *mnt,
 		return ERR_CAST(filename);
 
 	set_nameidata(&nd, -1, filename);
+	nd.root = *root;
+	nd.state = ND_ROOT_PRESET;
 	file = path_openat(&nd, op, flags | LOOKUP_RCU);
 	if (unlikely(file == ERR_PTR(-ECHILD)))
 		file = path_openat(&nd, op, flags);
@@ -3632,6 +3707,7 @@ int vfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
 	if (!dir->i_op->mknod)
 		return -EPERM;
 
+	mode = vfs_prepare_mode(dir, mode, mode, mode);
 	error = devcgroup_inode_mknod(mode, dev);
 	if (error)
 		return error;
@@ -3680,9 +3756,8 @@ retry:
 	if (IS_ERR(dentry))
 		return PTR_ERR(dentry);
 
-	if (!IS_POSIXACL(path.dentry->d_inode))
-		mode &= ~current_umask();
-	error = security_path_mknod(&path, dentry, mode, dev);
+	error = security_path_mknod(&path, dentry,
+			mode_strip_umask(path.dentry->d_inode, mode), dev);
 	if (error)
 		goto out;
 	switch (mode & S_IFMT) {
@@ -3730,7 +3805,7 @@ int vfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	if (!dir->i_op->mkdir)
 		return -EPERM;
 
-	mode &= (S_IRWXUGO|S_ISVTX);
+	mode = vfs_prepare_mode(dir, mode, S_IRWXUGO | S_ISVTX, 0);
 	error = security_inode_mkdir(dir, dentry, mode);
 	if (error)
 		return error;
@@ -3757,9 +3832,8 @@ retry:
 	if (IS_ERR(dentry))
 		return PTR_ERR(dentry);
 
-	if (!IS_POSIXACL(path.dentry->d_inode))
-		mode &= ~current_umask();
-	error = security_path_mkdir(&path, dentry, mode);
+	error = security_path_mkdir(&path, dentry,
+			mode_strip_umask(path.dentry->d_inode, mode));
 	if (!error)
 		error = vfs_mkdir(path.dentry->d_inode, dentry, mode);
 	done_path_create(&path, dentry);
@@ -4294,7 +4368,7 @@ SYSCALL_DEFINE2(link, const char __user *, oldname, const char __user *, newname
  *	   sb->s_vfs_rename_mutex. We might be more accurate, but that's another
  *	   story.
  *	c) we have to lock _four_ objects - parents and victim (if it exists),
- *	   and source (if it is not a directory).
+ *	   and source.
  *	   And that - after we got ->i_mutex on parents (until then we don't know
  *	   whether the target exists).  Solution: try to be smart with locking
  *	   order for inodes.  We rely on the fact that tree topology may change
@@ -4371,10 +4445,16 @@ int vfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 
 	take_dentry_name_snapshot(&old_name, old_dentry);
 	dget(new_dentry);
-	if (!is_dir || (flags & RENAME_EXCHANGE))
-		lock_two_nondirectories(source, target);
-	else if (target)
-		inode_lock(target);
+	/*
+	 * Lock all moved children. Moved directories may need to change parent
+	 * pointer so they need the lock to prevent against concurrent
+	 * directory changes moving parent pointer. For regular files we've
+	 * historically always done this. The lockdep locking subclasses are
+	 * somewhat arbitrary but RENAME_EXCHANGE in particular can swap
+	 * regular files and directories so it's difficult to tell which
+	 * subclasses to use.
+	 */
+	lock_two_inodes(source, target, I_MUTEX_NORMAL, I_MUTEX_NONDIR2);
 
 	error = -EBUSY;
 	if (is_local_mountpoint(old_dentry) || is_local_mountpoint(new_dentry))
@@ -4418,9 +4498,8 @@ int vfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 			d_exchange(old_dentry, new_dentry);
 	}
 out:
-	if (!is_dir || (flags & RENAME_EXCHANGE))
-		unlock_two_nondirectories(source, target);
-	else if (target)
+	inode_unlock(source);
+	if (target)
 		inode_unlock(target);
 	dput(new_dentry);
 	if (!error) {

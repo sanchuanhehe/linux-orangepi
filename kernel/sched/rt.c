@@ -6,6 +6,7 @@
 #include "sched.h"
 
 #include "pelt.h"
+#include "walt.h"
 
 #include <trace/hooks/sched.h>
 
@@ -17,6 +18,14 @@ static const u64 max_rt_runtime = MAX_BW;
 static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun);
 
 struct rt_bandwidth def_rt_bandwidth;
+
+#ifdef CONFIG_SCHED_RT_CAS
+unsigned int sysctl_sched_enable_rt_cas = 1;
+#endif
+
+#ifdef CONFIG_SCHED_RT_ACTIVE_LB
+unsigned int sysctl_sched_enable_rt_active_lb = 1;
+#endif
 
 static enum hrtimer_restart sched_rt_period_timer(struct hrtimer *timer)
 {
@@ -271,8 +280,12 @@ static void pull_rt_task(struct rq *this_rq);
 
 static inline bool need_pull_rt_task(struct rq *rq, struct task_struct *prev)
 {
-	/* Try to pull RT tasks here if we lower this rq's prio */
-	return rq->rt.highest_prio.curr > prev->prio;
+	/*
+	 * Try to pull RT tasks here if we lower this rq's prio and cpu is not
+	 * isolated
+	 */
+	return rq->rt.highest_prio.curr > prev->prio &&
+	       !cpu_isolated(cpu_of(rq));
 }
 
 static inline int rt_overloaded(struct rq *rq)
@@ -865,16 +878,14 @@ static int do_sched_rt_period_timer(struct rt_bandwidth *rt_b, int overrun)
 	span = sched_rt_period_mask();
 #ifdef CONFIG_RT_GROUP_SCHED
 	/*
-	 * FIXME: isolated CPUs should really leave the root task group,
-	 * whether they are isolcpus or were isolated via cpusets, lest
-	 * the timer run on a CPU which does not service all runqueues,
-	 * potentially leaving other CPUs indefinitely throttled.  If
-	 * isolation is really required, the user will turn the throttle
-	 * off to kill the perturbations it causes anyway.  Meanwhile,
-	 * this maintains functionality for boot and/or troubleshooting.
+	 * When the tasks in the task_group run on either isolated
+	 * CPUs or non-isolated CPUs, whether they are isolcpus or
+	 * were isolated via cpusets, check all the online rt_rq
+	 * to lest the timer run on a CPU which does not service
+	 * all runqueues, potentially leaving other CPUs indefinitely
+	 * throttled.
 	 */
-	if (rt_b == &root_task_group.rt_bandwidth)
-		span = cpu_online_mask;
+	span = cpu_online_mask;
 #endif
 	for_each_cpu(i, span) {
 		int enqueue = 0;
@@ -951,6 +962,18 @@ static inline int rt_se_prio(struct sched_rt_entity *rt_se)
 #endif
 
 	return rt_task_of(rt_se)->prio;
+}
+
+static inline void try_start_rt_bandwidth(struct rt_bandwidth *rt_b)
+{
+	raw_spin_lock(&rt_b->rt_runtime_lock);
+	if (!rt_b->rt_period_active) {
+		rt_b->rt_period_active = 1;
+		hrtimer_forward_now(&rt_b->rt_period_timer, rt_b->rt_period);
+		hrtimer_start_expires(&rt_b->rt_period_timer,
+				      HRTIMER_MODE_ABS_PINNED_HARD);
+	}
+	raw_spin_unlock(&rt_b->rt_runtime_lock);
 }
 
 static int sched_rt_runtime_exceeded(struct rt_rq *rt_rq)
@@ -1048,7 +1071,11 @@ static void update_curr_rt(struct rq *rq)
 				resched_curr(rq);
 			raw_spin_unlock(&rt_rq->rt_runtime_lock);
 			if (exceeded)
+<<<<<<< HEAD
 				do_start_rt_bandwidth(sched_rt_bandwidth(rt_rq));
+=======
+				try_start_rt_bandwidth(sched_rt_bandwidth(rt_rq));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		}
 	}
 }
@@ -1420,6 +1447,7 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 		rt_se->timeout = 0;
 
 	enqueue_rt_entity(rt_se, flags);
+	walt_inc_cumulative_runnable_avg(rq, p);
 
 	if (!task_current(rq, p) && p->nr_cpus_allowed > 1 &&
 	    !should_honor_rt_sync(rq, p, sync))
@@ -1432,6 +1460,7 @@ static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 
 	update_curr_rt(rq);
 	dequeue_rt_entity(rt_se, flags);
+	walt_dec_cumulative_runnable_avg(rq, p);
 
 	dequeue_pushable_task(rq, p);
 }
@@ -1553,6 +1582,7 @@ select_task_rq_rt(struct task_struct *p, int cpu, int sd_flag, int flags)
 	 * requirement of the task - which is only important on heterogeneous
 	 * systems like big.LITTLE.
 	 */
+<<<<<<< HEAD
 	may_not_preempt = task_may_not_preempt(curr, cpu);
 	test = (curr && (may_not_preempt ||
 			 (unlikely(rt_task(curr)) &&
@@ -1568,6 +1598,14 @@ select_task_rq_rt(struct task_struct *p, int cpu, int sd_flag, int flags)
 		cpu = this_cpu;
 		goto out_unlock;
 	}
+=======
+	test = curr &&
+	       unlikely(rt_task(curr)) &&
+	       (curr->nr_cpus_allowed < 2 || curr->prio <= p->prio);
+#ifdef CONFIG_SCHED_RT_CAS
+	test |= sysctl_sched_enable_rt_cas;
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	if (test || !rt_task_fits_capacity(p, cpu)) {
 		int target = find_lowest_rq(p);
@@ -1585,9 +1623,17 @@ select_task_rq_rt(struct task_struct *p, int cpu, int sd_flag, int flags)
 		 * Otherwise: Don't bother moving it if the destination CPU is
 		 * not running a lower priority task.
 		 */
+<<<<<<< HEAD
 		if (target != -1 &&
 		    (may_not_preempt ||
 		     p->prio < cpu_rq(target)->rt.highest_prio.curr))
+=======
+		if (target != -1 && (
+#ifdef CONFIG_SCHED_RT_CAS
+		    sysctl_sched_enable_rt_cas ||
+#endif
+		    p->prio < cpu_rq(target)->rt.highest_prio.curr))
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			cpu = target;
 	}
 
@@ -1696,8 +1742,7 @@ static inline void set_next_task_rt(struct rq *rq, struct task_struct *p, bool f
 	rt_queue_push_tasks(rq);
 }
 
-static struct sched_rt_entity *pick_next_rt_entity(struct rq *rq,
-						   struct rt_rq *rt_rq)
+static struct sched_rt_entity *pick_next_rt_entity(struct rt_rq *rt_rq)
 {
 	struct rt_prio_array *array = &rt_rq->active;
 	struct sched_rt_entity *next = NULL;
@@ -1708,6 +1753,8 @@ static struct sched_rt_entity *pick_next_rt_entity(struct rq *rq,
 	BUG_ON(idx >= MAX_RT_PRIO);
 
 	queue = array->queue + idx;
+	if (SCHED_WARN_ON(list_empty(queue)))
+		return NULL;
 	next = list_entry(queue->next, struct sched_rt_entity, run_list);
 
 	return next;
@@ -1719,8 +1766,9 @@ static struct task_struct *_pick_next_task_rt(struct rq *rq)
 	struct rt_rq *rt_rq  = &rq->rt;
 
 	do {
-		rt_se = pick_next_rt_entity(rq, rt_rq);
-		BUG_ON(!rt_se);
+		rt_se = pick_next_rt_entity(rt_rq);
+		if (unlikely(!rt_se))
+			return NULL;
 		rt_rq = group_rt_rq(rt_se);
 	} while (rt_rq);
 
@@ -1788,6 +1836,170 @@ struct task_struct *pick_highest_pushable_task(struct rq *rq, int cpu)
 }
 EXPORT_SYMBOL_GPL(pick_highest_pushable_task);
 
+#ifdef CONFIG_SCHED_RT_CAS
+static int find_cas_cpu(struct sched_domain *sd,
+		 struct task_struct *task, struct cpumask *lowest_mask)
+{
+	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
+	struct sched_group *sg = NULL;
+	struct sched_group *sg_target = NULL;
+	struct sched_group *sg_backup = NULL;
+	struct cpumask search_cpu, backup_search_cpu;
+	int cpu = -1;
+	int target_cpu = -1;
+	unsigned long cpu_capacity;
+	unsigned long boosted_tutil = uclamp_task_util(task, uclamp_eff_value(task, UCLAMP_MIN), uclamp_eff_value(task, UCLAMP_MAX));
+	unsigned long target_capacity = ULONG_MAX;
+	unsigned long util;
+	unsigned long target_cpu_util = ULONG_MAX;
+	int prev_cpu = task_cpu(task);
+#ifdef CONFIG_SCHED_RTG
+	struct cpumask *rtg_target = NULL;
+#endif
+	bool boosted = uclamp_boosted(task);
+
+	if (!sysctl_sched_enable_rt_cas)
+		return -1;
+
+	rcu_read_lock();
+
+#ifdef CONFIG_SCHED_RTG
+	rtg_target = find_rtg_target(task);
+#endif
+
+	sd = rcu_dereference(per_cpu(sd_asym_cpucapacity, 0));
+	if (!sd) {
+		rcu_read_unlock();
+		return -1;
+	}
+
+	sg = sd->groups;
+	do {
+		if (!cpumask_intersects(lowest_mask, sched_group_span(sg)))
+			continue;
+
+		if (boosted) {
+			if (cpumask_test_cpu(rd->max_cap_orig_cpu,
+					     sched_group_span(sg))) {
+				sg_target = sg;
+				break;
+			}
+		}
+
+		cpu = group_first_cpu(sg);
+#ifdef CONFIG_SCHED_RTG
+		/* honor the rtg tasks */
+		if (rtg_target) {
+			if (cpumask_test_cpu(cpu, rtg_target)) {
+				sg_target = sg;
+				break;
+			}
+
+			/* active LB or big_task favor cpus with more capacity */
+			if (task->state == TASK_RUNNING || boosted) {
+				if (capacity_orig_of(cpu) >
+				    capacity_orig_of(cpumask_any(rtg_target))) {
+					sg_target = sg;
+					break;
+				}
+
+				sg_backup = sg;
+				continue;
+			}
+		}
+#endif
+		/*
+		 * 1. add margin to support task migration
+		 * 2. if task_util is high then all cpus, make sure the
+		 * sg_backup with the most powerful cpus is selected
+		 */
+		if (!rt_task_fits_capacity(task, cpu)) {
+			sg_backup = sg;
+			continue;
+		}
+
+		/* support task boost */
+		cpu_capacity = capacity_orig_of(cpu);
+		if (boosted_tutil > cpu_capacity) {
+			sg_backup = sg;
+			continue;
+		}
+
+		/* sg_target: select the sg with smaller capacity */
+		if (cpu_capacity < target_capacity) {
+			target_capacity = cpu_capacity;
+			sg_target = sg;
+		}
+	} while (sg = sg->next, sg != sd->groups);
+
+	if (!sg_target)
+		sg_target = sg_backup;
+
+	if (sg_target) {
+		cpumask_and(&search_cpu, lowest_mask, sched_group_span(sg_target));
+		cpumask_copy(&backup_search_cpu, lowest_mask);
+		cpumask_andnot(&backup_search_cpu, &backup_search_cpu, &search_cpu);
+	} else {
+		cpumask_copy(&search_cpu, lowest_mask);
+		cpumask_clear(&backup_search_cpu);
+	}
+
+retry:
+	cpu = cpumask_first(&search_cpu);
+	do {
+		trace_sched_find_cas_cpu_each(task, cpu, target_cpu,
+			cpu_isolated(cpu),
+			idle_cpu(cpu), boosted_tutil, cpu_util(cpu),
+			capacity_orig_of(cpu));
+
+		if (cpu_isolated(cpu))
+			continue;
+
+		if (!cpumask_test_cpu(cpu, task->cpus_ptr))
+			continue;
+
+		/* find best cpu with smallest max_capacity */
+		if (target_cpu != -1 &&
+		    capacity_orig_of(cpu) > capacity_orig_of(target_cpu))
+			continue;
+
+		util = cpu_util(cpu);
+
+		/* Find the least loaded CPU */
+		if (util > target_cpu_util)
+			continue;
+
+		/*
+		 * If the preivous CPU has same load, keep it as
+		 * target_cpu
+		 */
+		if (target_cpu_util == util && target_cpu == prev_cpu)
+			continue;
+
+		/*
+		 * If candidate CPU is the previous CPU, select it.
+		 * If all above conditions are same, select the least
+		 * cumulative window demand CPU.
+		 */
+		target_cpu_util = util;
+		target_cpu = cpu;
+	} while ((cpu = cpumask_next(cpu, &search_cpu)) < nr_cpu_ids);
+
+	if (target_cpu != -1 && cpumask_test_cpu(target_cpu, lowest_mask)) {
+		goto done;
+	} else if (!cpumask_empty(&backup_search_cpu)) {
+		cpumask_copy(&search_cpu, &backup_search_cpu);
+		cpumask_clear(&backup_search_cpu);
+		goto retry;
+	}
+
+done:
+	trace_sched_find_cas_cpu(task, lowest_mask, boosted_tutil, prev_cpu, target_cpu);
+	rcu_read_unlock();
+	return target_cpu;
+}
+#endif
+
 static DEFINE_PER_CPU(cpumask_var_t, local_cpu_mask);
 
 static int find_lowest_rq(struct task_struct *task)
@@ -1797,6 +2009,9 @@ static int find_lowest_rq(struct task_struct *task)
 	int this_cpu = smp_processor_id();
 	int cpu      = -1;
 	int ret;
+#ifdef CONFIG_SCHED_RT_CAS
+	int cas_cpu;
+#endif
 
 	/* Make sure the mask is initialized first */
 	if (unlikely(!lowest_mask))
@@ -1827,10 +2042,19 @@ static int find_lowest_rq(struct task_struct *task)
 	if (!ret)
 		return -1; /* No targets found */
 
+<<<<<<< HEAD
 	cpu = task_cpu(task);
 
 	if (IS_ENABLED(CONFIG_ROCKCHIP_PERFORMANCE))
 		cpu = rockchip_perf_select_rt_cpu(cpu, lowest_mask);
+=======
+#ifdef CONFIG_SCHED_RT_CAS
+	cas_cpu = find_cas_cpu(sd, task, lowest_mask);
+	if (cas_cpu != -1)
+		return cas_cpu;
+#endif
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	/*
 	 * At this point we have built a mask of CPUs representing the
 	 * lowest priority tasks in the system.  Now we want to elect
@@ -1889,6 +2113,26 @@ static int find_lowest_rq(struct task_struct *task)
 	return -1;
 }
 
+static struct task_struct *pick_next_pushable_task(struct rq *rq)
+{
+	struct task_struct *p;
+
+	if (!has_pushable_tasks(rq))
+		return NULL;
+
+	p = plist_first_entry(&rq->rt.pushable_tasks,
+			      struct task_struct, pushable_tasks);
+
+	BUG_ON(rq->cpu != task_cpu(p));
+	BUG_ON(task_current(rq, p));
+	BUG_ON(p->nr_cpus_allowed <= 1);
+
+	BUG_ON(!task_on_rq_queued(p));
+	BUG_ON(!rt_task(p));
+
+	return p;
+}
+
 /* Will lock the rq it finds */
 static struct rq *find_lock_lowest_rq(struct task_struct *task, struct rq *rq)
 {
@@ -1920,14 +2164,10 @@ static struct rq *find_lock_lowest_rq(struct task_struct *task, struct rq *rq)
 			 * We had to unlock the run queue. In
 			 * the mean time, task could have
 			 * migrated already or had its affinity changed.
-			 * Also make sure that it wasn't scheduled on its rq.
 			 */
-			if (unlikely(task_rq(task) != rq ||
-				     !cpumask_test_cpu(lowest_rq->cpu, task->cpus_ptr) ||
-				     task_running(rq, task) ||
-				     !rt_task(task) ||
-				     !task_on_rq_queued(task))) {
-
+			struct task_struct *next_task = pick_next_pushable_task(rq);
+			if (unlikely(next_task != task ||
+				     !cpumask_test_cpu(lowest_rq->cpu, task->cpus_ptr))) {
 				double_unlock_balance(rq, lowest_rq);
 				lowest_rq = NULL;
 				break;
@@ -1944,26 +2184,6 @@ static struct rq *find_lock_lowest_rq(struct task_struct *task, struct rq *rq)
 	}
 
 	return lowest_rq;
-}
-
-static struct task_struct *pick_next_pushable_task(struct rq *rq)
-{
-	struct task_struct *p;
-
-	if (!has_pushable_tasks(rq))
-		return NULL;
-
-	p = plist_first_entry(&rq->rt.pushable_tasks,
-			      struct task_struct, pushable_tasks);
-
-	BUG_ON(rq->cpu != task_cpu(p));
-	BUG_ON(task_current(rq, p));
-	BUG_ON(p->nr_cpus_allowed <= 1);
-
-	BUG_ON(!task_on_rq_queued(p));
-	BUG_ON(!rt_task(p));
-
-	return p;
 }
 
 /*
@@ -2378,7 +2598,8 @@ static void switched_from_rt(struct rq *rq, struct task_struct *p)
 	 * we may need to handle the pulling of RT tasks
 	 * now.
 	 */
-	if (!task_on_rq_queued(p) || rq->rt.rt_nr_running)
+	if (!task_on_rq_queued(p) || rq->rt.rt_nr_running ||
+		cpu_isolated(cpu_of(rq)))
 		return;
 
 	rt_queue_pull_task(rq);
@@ -2537,6 +2758,93 @@ static void task_tick_rt(struct rq *rq, struct task_struct *p, int queued)
 	}
 }
 
+#ifdef CONFIG_SCHED_RT_ACTIVE_LB
+static int rt_active_load_balance_cpu_stop(void *data)
+{
+	struct rq *busiest_rq = data;
+	struct task_struct *next_task = busiest_rq->rt_push_task;
+	struct rq *lowest_rq = NULL;
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&busiest_rq->lock, flags);
+	busiest_rq->rt_active_balance = 0;
+
+	if (!task_on_rq_queued(next_task) ||
+	    task_cpu(next_task) != cpu_of(busiest_rq))
+		goto out;
+
+	/* find_lock_lowest_rq locks the rq if found */
+	lowest_rq = find_lock_lowest_rq(next_task, busiest_rq);
+	if (!lowest_rq)
+		goto out;
+
+	if (capacity_orig_of(cpu_of(lowest_rq)) <= capacity_orig_of(task_cpu(next_task)))
+		goto unlock;
+
+	deactivate_task(busiest_rq, next_task, 0);
+	set_task_cpu(next_task, lowest_rq->cpu);
+	activate_task(lowest_rq, next_task, 0);
+
+	resched_curr(lowest_rq);
+unlock:
+	double_unlock_balance(busiest_rq, lowest_rq);
+out:
+	put_task_struct(next_task);
+	raw_spin_unlock_irqrestore(&busiest_rq->lock, flags);
+
+	return 0;
+}
+
+static void check_for_migration_rt(struct rq *rq, struct task_struct *p)
+{
+	bool need_actvie_lb = false;
+	bool misfit_task = false;
+	int cpu = task_cpu(p);
+	unsigned long cpu_orig_cap;
+#ifdef CONFIG_SCHED_RTG
+	struct cpumask *rtg_target = NULL;
+#endif
+
+	if (!sysctl_sched_enable_rt_active_lb)
+		return;
+
+	if (p->nr_cpus_allowed == 1)
+		return;
+
+	cpu_orig_cap = capacity_orig_of(cpu);
+	/* cpu has max capacity, no need to do balance */
+	if (cpu_orig_cap ==  rq->rd->max_cpu_capacity)
+		return;
+
+#ifdef CONFIG_SCHED_RTG
+	rtg_target = find_rtg_target(p);
+	if (rtg_target)
+		misfit_task = capacity_orig_of(cpumask_first(rtg_target)) >
+				cpu_orig_cap;
+	else
+		misfit_task = !rt_task_fits_capacity(p, cpu);
+#else
+	misfit_task = !rt_task_fits_capacity(p, cpu);
+#endif
+
+	if (misfit_task) {
+		raw_spin_lock(&rq->lock);
+		if (!rq->active_balance && !rq->rt_active_balance) {
+			rq->rt_active_balance = 1;
+			rq->rt_push_task = p;
+			get_task_struct(p);
+			need_actvie_lb = true;
+		}
+		raw_spin_unlock(&rq->lock);
+
+		if (need_actvie_lb)
+			stop_one_cpu_nowait(task_cpu(p),
+					    rt_active_load_balance_cpu_stop,
+					    rq, &rq->rt_active_balance_work);
+	}
+}
+#endif
+
 static unsigned int get_rr_interval_rt(struct rq *rq, struct task_struct *task)
 {
 	/*
@@ -2581,6 +2889,12 @@ const struct sched_class rt_sched_class
 
 #ifdef CONFIG_UCLAMP_TASK
 	.uclamp_enabled		= 1,
+#endif
+#ifdef CONFIG_SCHED_WALT
+	.fixup_walt_sched_stats	= fixup_walt_sched_stats_common,
+#endif
+#ifdef CONFIG_SCHED_RT_ACTIVE_LB
+	.check_for_migration	= check_for_migration_rt,
 #endif
 };
 

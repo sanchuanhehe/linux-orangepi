@@ -48,7 +48,11 @@ gen_initcalls()
 {
 	info GEN .tmp_initcalls.lds
 
+<<<<<<< HEAD
 	${PYTHON} ${srctree}/scripts/jobserver-exec		\
+=======
+	${PYTHON3} ${srctree}/scripts/jobserver-exec		\
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	${PERL} ${srctree}/scripts/generate_initcall_order.pl	\
 		${KBUILD_VMLINUX_OBJS} ${KBUILD_VMLINUX_LIBS}	\
 		> .tmp_initcalls.lds
@@ -121,6 +125,7 @@ objtool_link()
 	fi
 
 	if [ -n "${CONFIG_VMLINUX_VALIDATION}" ]; then
+<<<<<<< HEAD
 		objtoolopt="${objtoolopt} --noinstr"
 	fi
 
@@ -129,6 +134,9 @@ objtool_link()
 			objtoolcmd="check"
 		fi
 		objtoolopt="${objtoolopt} --vmlinux"
+=======
+		objtoolopt="check"
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		if [ -n "${CONFIG_CPU_UNRET_ENTRY}" ]; then
 			objtoolopt="${objtoolopt} --unret"
 		fi
@@ -312,7 +320,10 @@ cleanup()
 {
 	rm -f .btf.*
 	rm -f .tmp_System.map
+<<<<<<< HEAD
 	rm -f .tmp_kallsyms
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	rm -f .tmp_initcalls.lds
 	rm -f .tmp_symversions.lds
 	rm -f .tmp_vmlinux*

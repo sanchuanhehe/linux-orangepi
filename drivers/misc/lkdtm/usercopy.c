@@ -325,7 +325,11 @@ void lkdtm_USERCOPY_KERNEL(void)
 
 	pr_info("attempting bad copy_to_user from kernel text: %px\n",
 		vm_mmap);
+<<<<<<< HEAD
 	if (copy_to_user((void __user *)user_addr, __va_function(vm_mmap),
+=======
+	if (copy_to_user((void __user *)user_addr, function_nocfi(vm_mmap),
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			 unconst + PAGE_SIZE)) {
 		pr_warn("copy_to_user failed, but lacked Oops\n");
 		goto free_user;

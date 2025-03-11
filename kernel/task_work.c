@@ -33,9 +33,12 @@ int task_work_add(struct task_struct *task, struct callback_head *work,
 		  enum task_work_notify_mode notify)
 {
 	struct callback_head *head;
+<<<<<<< HEAD
 
 	/* record the work call stack in order to print it in KASAN reports */
 	kasan_record_aux_stack(work);
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	do {
 		head = READ_ONCE(task->task_works);

@@ -1,6 +1,7 @@
 #ifndef INTERNAL_IO_WQ_H
 #define INTERNAL_IO_WQ_H
 
+<<<<<<< HEAD
 #ifdef __GENKSYMS__
 /*
  * ANDROID ABI HACK
@@ -12,6 +13,8 @@
 #include <linux/io_uring.h>
 #endif
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #include <linux/refcount.h>
 
 struct io_wq;
@@ -140,6 +143,10 @@ void io_wq_hash_work(struct io_wq_work *work, void *val);
 
 int io_wq_cpu_affinity(struct io_wq *wq, cpumask_var_t mask);
 int io_wq_max_workers(struct io_wq *wq, int *new_count);
+<<<<<<< HEAD
+=======
+bool io_wq_worker_stopped(void);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 static inline bool io_wq_is_hashed(struct io_wq_work *work)
 {

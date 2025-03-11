@@ -105,7 +105,11 @@ static int sun8i_ss_setup_ivs(struct skcipher_request *areq)
 	unsigned int ivsize = crypto_skcipher_ivsize(tfm);
 	struct sun8i_ss_flow *sf = &ss->flows[rctx->flow];
 	int i = 0;
+<<<<<<< HEAD
 	u32 a;
+=======
+	dma_addr_t a;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	int err;
 
 	rctx->ivlen = ivsize;
@@ -132,7 +136,11 @@ static int sun8i_ss_setup_ivs(struct skcipher_request *areq)
 		}
 		rctx->p_iv[i] = a;
 		/* we need to setup all others IVs only in the decrypt way */
+<<<<<<< HEAD
 		if (rctx->op_dir & SS_ENCRYPTION)
+=======
+		if (rctx->op_dir == SS_ENCRYPTION)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			return 0;
 		todo = min(len, sg_dma_len(sg));
 		len -= todo;

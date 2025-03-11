@@ -19,7 +19,11 @@
 #include "objtool.h"
 
 bool no_fp, no_unreachable, retpoline, module, backtrace, uaccess, stats,
+<<<<<<< HEAD
      validate_dup, vmlinux, mcount, noinstr, sls, unret, rethunk;
+=======
+     validate_dup, vmlinux, sls, unret, rethunk;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 static const char * const check_usage[] = {
 	"objtool check [<options>] file.o",
@@ -39,7 +43,10 @@ const struct option check_options[] = {
 	OPT_BOOLEAN('d', "duplicate", &validate_dup, "duplicate validation for vmlinux.o"),
 	OPT_BOOLEAN('n', "noinstr", &noinstr, "noinstr validation for vmlinux.o"),
 	OPT_BOOLEAN('l', "vmlinux", &vmlinux, "vmlinux.o validation"),
+<<<<<<< HEAD
 	OPT_BOOLEAN('M', "mcount", &mcount, "generate __mcount_loc"),
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	OPT_BOOLEAN('S', "sls", &sls, "validate straight-line-speculation"),
 	OPT_END(),
 };

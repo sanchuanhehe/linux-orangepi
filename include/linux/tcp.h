@@ -266,6 +266,7 @@ struct tcp_sock {
 	u32	packets_out;	/* Packets which are "in flight"	*/
 	u32	retrans_out;	/* Retransmitted packets out		*/
 	u32	max_packets_out;  /* max packets_out in last window */
+<<<<<<< HEAD
 /* GENKSYMS hack to preserve the ABI because of f4ce91ce12a7 ("tcp: fix
  * tcp_cwnd_validate() to not forget is_cwnd_limited")
  */
@@ -274,6 +275,9 @@ struct tcp_sock {
 #else
 	u32	max_packets_seq;  /* right edge of max_packets_out flight */
 #endif
+=======
+	u32	cwnd_usage_seq;  /* right edge of cwnd usage tracking flight */
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	u16	urg_data;	/* Saved octet of OOB data and control flags */
 	u8	ecn_flags;	/* ECN status bits.			*/
@@ -325,6 +329,9 @@ struct tcp_sock {
 
 	/* OOO segments go in this rbtree. Socket lock must be held. */
 	struct rb_root	out_of_order_queue;
+#ifdef CONFIG_NEWIP
+	struct sk_buff	*nip_out_of_order_queue; /* NIP */
+#endif
 	struct sk_buff	*ooo_last_skb; /* cache rb_last(out_of_order_queue) */
 
 	/* SACKs data, these 2 need to be together (see tcp_options_write) */
@@ -483,7 +490,7 @@ static inline void fastopen_queue_tune(struct sock *sk, int backlog)
 	struct request_sock_queue *queue = &inet_csk(sk)->icsk_accept_queue;
 	int somaxconn = READ_ONCE(sock_net(sk)->core.sysctl_somaxconn);
 
-	queue->fastopenq.max_qlen = min_t(unsigned int, backlog, somaxconn);
+	WRITE_ONCE(queue->fastopenq.max_qlen, min_t(unsigned int, backlog, somaxconn));
 }
 
 static inline void tcp_move_syn(struct tcp_sock *tp,

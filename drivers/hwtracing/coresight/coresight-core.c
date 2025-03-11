@@ -1415,6 +1415,7 @@ static int coresight_remove_match(struct device *dev, void *data)
 		if (csdev->dev.fwnode == conn->child_fwnode) {
 			iterator->orphan = true;
 			coresight_remove_links(iterator, conn);
+<<<<<<< HEAD
 			/*
 			 * Drop the reference to the handle for the remote
 			 * device acquired in parsing the connections from
@@ -1422,6 +1423,10 @@ static int coresight_remove_match(struct device *dev, void *data)
 			 */
 			fwnode_handle_put(conn->child_fwnode);
 			conn->child_fwnode = NULL;
+=======
+
+			conn->child_dev = NULL;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			/* No need to continue */
 			break;
 		}

@@ -757,6 +757,7 @@ int jbd2_fc_begin_commit(journal_t *journal, tid_t tid)
 	}
 	journal->j_flags |= JBD2_FAST_COMMIT_ONGOING;
 	write_unlock(&journal->j_state_lock);
+	jbd2_journal_lock_updates(journal);
 
 	return 0;
 }
@@ -768,6 +769,7 @@ EXPORT_SYMBOL(jbd2_fc_begin_commit);
  */
 static int __jbd2_fc_end_commit(journal_t *journal, tid_t tid, bool fallback)
 {
+	jbd2_journal_unlock_updates(journal);
 	if (journal->j_fc_cleanup_callback)
 		journal->j_fc_cleanup_callback(journal, 0);
 	write_lock(&journal->j_state_lock);
@@ -1297,6 +1299,48 @@ static int jbd2_min_tag_size(void)
 	return sizeof(journal_block_tag_t) - 4;
 }
 
+/**
+ * jbd2_journal_shrink_scan()
+ *
+ * Scan the checkpointed buffer on the checkpoint list and release the
+ * journal_head.
+ */
+static unsigned long jbd2_journal_shrink_scan(struct shrinker *shrink,
+					      struct shrink_control *sc)
+{
+	journal_t *journal = container_of(shrink, journal_t, j_shrinker);
+	unsigned long nr_to_scan = sc->nr_to_scan;
+	unsigned long nr_shrunk;
+	unsigned long count;
+
+	count = percpu_counter_read_positive(&journal->j_checkpoint_jh_count);
+	trace_jbd2_shrink_scan_enter(journal, sc->nr_to_scan, count);
+
+	nr_shrunk = jbd2_journal_shrink_checkpoint_list(journal, &nr_to_scan);
+
+	count = percpu_counter_read_positive(&journal->j_checkpoint_jh_count);
+	trace_jbd2_shrink_scan_exit(journal, nr_to_scan, nr_shrunk, count);
+
+	return nr_shrunk;
+}
+
+/**
+ * jbd2_journal_shrink_count()
+ *
+ * Count the number of checkpoint buffers on the checkpoint list.
+ */
+static unsigned long jbd2_journal_shrink_count(struct shrinker *shrink,
+					       struct shrink_control *sc)
+{
+	journal_t *journal = container_of(shrink, journal_t, j_shrinker);
+	unsigned long count;
+
+	count = percpu_counter_read_positive(&journal->j_checkpoint_jh_count);
+	trace_jbd2_shrink_count(journal, sc->nr_to_scan, count);
+
+	return count;
+}
+
 /*
  * Management for journal control blocks: functions to create and
  * destroy journal_t structures, and to initialise and read existing
@@ -1375,9 +1419,23 @@ static journal_t *journal_init_common(struct block_device *bdev,
 	journal->j_sb_buffer = bh;
 	journal->j_superblock = (journal_superblock_t *)bh->b_data;
 
+	journal->j_shrink_transaction = NULL;
+	journal->j_shrinker.scan_objects = jbd2_journal_shrink_scan;
+	journal->j_shrinker.count_objects = jbd2_journal_shrink_count;
+	journal->j_shrinker.seeks = DEFAULT_SEEKS;
+	journal->j_shrinker.batch = journal->j_max_transaction_buffers;
+
+	if (percpu_counter_init(&journal->j_checkpoint_jh_count, 0, GFP_KERNEL))
+		goto err_cleanup;
+
+	if (register_shrinker(&journal->j_shrinker)) {
+		percpu_counter_destroy(&journal->j_checkpoint_jh_count);
+		goto err_cleanup;
+	}
 	return journal;
 
 err_cleanup:
+	brelse(journal->j_sb_buffer);
 	kfree(journal->j_wbuf);
 	jbd2_journal_destroy_revoke(journal);
 	kfree(journal);
@@ -1566,9 +1624,11 @@ static int jbd2_write_superblock(journal_t *journal, int write_flags)
 		return -EIO;
 	}
 
-	trace_jbd2_write_superblock(journal, write_flags);
 	if (!(journal->j_flags & JBD2_BARRIER))
 		write_flags &= ~(REQ_FUA | REQ_PREFLUSH);
+
+	trace_jbd2_write_superblock(journal, write_flags);
+
 	if (buffer_write_io_error(bh)) {
 		/*
 		 * Oh, dear.  A previous attempt to write the journal
@@ -1624,6 +1684,10 @@ int jbd2_journal_update_sb_log_tail(journal_t *journal, tid_t tail_tid,
 
 	if (is_journal_aborted(journal))
 		return -EIO;
+	if (test_bit(JBD2_CHECKPOINT_IO_ERROR, &journal->j_atomic_flags)) {
+		jbd2_journal_abort(journal, -EIO);
+		return -EIO;
+	}
 
 	BUG_ON(!mutex_is_locked(&journal->j_checkpoint_mutex));
 	jbd_debug(1, "JBD2: updating superblock (start %lu, seq %u)\n",
@@ -2003,6 +2067,16 @@ int jbd2_journal_destroy(journal_t *journal)
 	J_ASSERT(journal->j_checkpoint_transactions == NULL);
 	spin_unlock(&journal->j_list_lock);
 
+	/*
+	 * OK, all checkpoint transactions have been checked, now check the
+	 * write out io error flag and abort the journal if some buffer failed
+	 * to write back to the original location, otherwise the filesystem
+	 * may become inconsistent.
+	 */
+	if (!is_journal_aborted(journal) &&
+	    test_bit(JBD2_CHECKPOINT_IO_ERROR, &journal->j_atomic_flags))
+		jbd2_journal_abort(journal, -EIO);
+
 	if (journal->j_sb_buffer) {
 		if (!is_journal_aborted(journal)) {
 			mutex_lock_io(&journal->j_checkpoint_mutex);
@@ -2020,6 +2094,10 @@ int jbd2_journal_destroy(journal_t *journal)
 		brelse(journal->j_sb_buffer);
 	}
 
+	if (journal->j_shrinker.flags & SHRINKER_REGISTERED) {
+		percpu_counter_destroy(&journal->j_checkpoint_jh_count);
+		unregister_shrinker(&journal->j_shrinker);
+	}
 	if (journal->j_proc_entry)
 		jbd2_stats_proc_exit(journal);
 	iput(journal->j_inode);

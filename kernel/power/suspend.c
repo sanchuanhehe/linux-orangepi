@@ -139,7 +139,10 @@ static void s2idle_loop(void)
 			break;
 		}
 
+<<<<<<< HEAD
 		clear_wakeup_reasons();
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		s2idle_enter();
 	}
 

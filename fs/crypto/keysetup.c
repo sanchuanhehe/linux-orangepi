@@ -479,10 +479,13 @@ static int setup_file_encryption_key(struct fscrypt_info *ci,
 	if (!mk) {
 		if (ci->ci_policy.version != FSCRYPT_POLICY_V1)
 			return -ENOKEY;
+<<<<<<< HEAD
 
 		err = fscrypt_select_encryption_impl(ci, false);
 		if (err)
 			return err;
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 		/*
 		 * As a legacy fallback for v1 policies, search for the key in

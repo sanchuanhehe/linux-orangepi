@@ -111,7 +111,7 @@ fi
 
 MERGE_LIST=$*
 SED_CONFIG_EXP1="s/^\(${CONFIG_PREFIX}[a-zA-Z0-9_]*\)=.*/\1/p"
-SED_CONFIG_EXP2="s/^# \(${CONFIG_PREFIX}[a-zA-Z0-9_]*\) is not set$/\1/p"
+SED_CONFIG_EXP2="s/^#\s*\(${CONFIG_PREFIX}[a-zA-Z0-9_]*\)\s*is\s*not\s*set\r*$/\1/p"
 
 TMP_FILE=$(mktemp ./.tmp.config.XXXXXXXXXX)
 MERGE_FILE=$(mktemp ./.merge_tmp.config.XXXXXXXXXX)
@@ -121,6 +121,7 @@ echo "Using $INITFILE as base"
 trap clean_up EXIT
 
 cat $INITFILE > $TMP_FILE
+echo "" >> $TMP_FILE
 
 # Merge files, printing warnings on overridden values
 for ORIG_MERGE_FILE in $MERGE_LIST ; do
@@ -161,6 +162,7 @@ for ORIG_MERGE_FILE in $MERGE_LIST ; do
 		fi
 	done
 	cat $MERGE_FILE >> $TMP_FILE
+	echo "" >> $TMP_FILE
 done
 
 if [ "$STRICT_MODE_VIOLATED" = "true" ]; then

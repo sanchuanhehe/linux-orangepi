@@ -24,9 +24,13 @@
 #include <linux/atomic.h>
 #include <linux/kthread.h>
 #include <linux/fs.h>
+<<<<<<< HEAD
 #ifndef __GENKSYMS__
 #include <linux/blk-mq.h>
 #endif
+=======
+#include <linux/blk-mq.h>
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 /* percpu_counter batch for blkg_[rw]stats, per-cpu drift doesn't matter */
 #define BLKG_STAT_CPU_BATCH	(INT_MAX / 2)

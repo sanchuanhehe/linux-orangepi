@@ -671,6 +671,7 @@ static int rockchip_dp_probe(struct platform_device *pdev)
 	if (IS_ERR(dp->adp))
 		return PTR_ERR(dp->adp);
 
+<<<<<<< HEAD
 	if (dp->data->split_mode && device_property_read_bool(dev, "split-mode")) {
 		struct rockchip_dp_device *secondary =
 				rockchip_dp_find_by_id(dev->driver, !dp->id);
@@ -694,6 +695,8 @@ static int rockchip_dp_probe(struct platform_device *pdev)
 			dp->plat_data.left_display = true;
 	}
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	ret = component_add(dev, &rockchip_dp_component_ops);
 	if (ret)
 		goto err_dp_remove;

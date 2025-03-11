@@ -459,6 +459,26 @@ struct io_ring_ctx {
 		u32				iowq_limits[2];
 		bool				iowq_limits_set;
 	};
+<<<<<<< HEAD
+=======
+};
+
+struct io_uring_task {
+	/* submission side */
+	int			cached_refs;
+	struct xarray		xa;
+	struct wait_queue_head	wait;
+	const struct io_ring_ctx *last;
+	struct io_wq		*io_wq;
+	struct percpu_counter	inflight;
+	atomic_t		inflight_tracked;
+	atomic_t		in_idle;
+
+	spinlock_t		task_lock;
+	struct io_wq_work_list	task_list;
+	struct callback_head	task_work;
+	bool			task_running;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 };
 
 #ifndef __GENKSYMS__
@@ -496,6 +516,10 @@ struct io_poll_iocb {
 	struct file			*file;
 	struct wait_queue_head		*head;
 	__poll_t			events;
+<<<<<<< HEAD
+=======
+	int				retries;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	struct wait_queue_entry		wait;
 };
 
@@ -588,7 +612,9 @@ struct io_sr_msg {
 	int				msg_flags;
 	int				bgid;
 	size_t				len;
+	size_t				done_io;
 	struct io_buffer		*kbuf;
+	void __user			*msg_control;
 };
 
 struct io_open {
@@ -749,6 +775,10 @@ enum {
 	REQ_F_CREDS_BIT,
 	REQ_F_REFCOUNT_BIT,
 	REQ_F_ARM_LTIMEOUT_BIT,
+<<<<<<< HEAD
+=======
+	REQ_F_PARTIAL_IO_BIT,
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	/* keep async read/write and isreg together and in order */
 	REQ_F_NOWAIT_READ_BIT,
 	REQ_F_NOWAIT_WRITE_BIT,
@@ -804,6 +834,11 @@ enum {
 	REQ_F_REFCOUNT		= BIT(REQ_F_REFCOUNT_BIT),
 	/* there is a linked timeout that has to be armed */
 	REQ_F_ARM_LTIMEOUT	= BIT(REQ_F_ARM_LTIMEOUT_BIT),
+<<<<<<< HEAD
+=======
+	/* request has already done partial IO */
+	REQ_F_PARTIAL_IO	= BIT(REQ_F_PARTIAL_IO_BIT),
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 };
 
 struct async_poll {
@@ -1098,7 +1133,12 @@ static int __io_register_rsrc_update(struct io_ring_ctx *ctx, unsigned type,
 				     unsigned nr_args);
 static void io_clean_op(struct io_kiocb *req);
 static struct file *io_file_get(struct io_ring_ctx *ctx,
+<<<<<<< HEAD
 				struct io_kiocb *req, int fd, bool fixed);
+=======
+				struct io_kiocb *req, int fd, bool fixed,
+				unsigned int issue_flags);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 static void __io_queue_sqe(struct io_kiocb *req);
 static void io_rsrc_put_work(struct work_struct *work);
 
@@ -1524,6 +1564,11 @@ static void io_kill_timeout(struct io_kiocb *req, int status)
 
 static void io_queue_deferred(struct io_ring_ctx *ctx)
 {
+<<<<<<< HEAD
+=======
+	lockdep_assert_held(&ctx->completion_lock);
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	while (!list_empty(&ctx->defer_list)) {
 		struct io_defer_entry *de = list_first_entry(&ctx->defer_list,
 						struct io_defer_entry, list);
@@ -1575,12 +1620,31 @@ static void __io_commit_cqring_flush(struct io_ring_ctx *ctx)
 		io_queue_deferred(ctx);
 }
 
+<<<<<<< HEAD
 static inline void io_commit_cqring(struct io_ring_ctx *ctx)
 {
 	if (unlikely(ctx->off_timeout_used || ctx->drain_active))
 		__io_commit_cqring_flush(ctx);
 	/* order cqe stores with ring update */
 	smp_store_release(&ctx->rings->cq.tail, ctx->cached_cq_tail);
+=======
+static inline bool io_commit_needs_flush(struct io_ring_ctx *ctx)
+{
+	return ctx->off_timeout_used || ctx->drain_active;
+}
+
+static inline void __io_commit_cqring(struct io_ring_ctx *ctx)
+{
+	/* order cqe stores with ring update */
+	smp_store_release(&ctx->rings->cq.tail, ctx->cached_cq_tail);
+}
+
+static inline void io_commit_cqring(struct io_ring_ctx *ctx)
+{
+	if (unlikely(io_commit_needs_flush(ctx)))
+		__io_commit_cqring_flush(ctx);
+	__io_commit_cqring(ctx);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 static inline bool io_sqring_full(struct io_ring_ctx *ctx)
@@ -2205,9 +2269,18 @@ static void tctx_task_work(struct callback_head *cb)
 			}
 			req->io_task_work.func(req, &locked);
 			node = next;
+<<<<<<< HEAD
 		} while (node);
 
 		cond_resched();
+=======
+			if (unlikely(need_resched())) {
+				ctx_flush_and_put(ctx, &locked);
+				ctx = NULL;
+				cond_resched();
+			}
+		} while (node);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	}
 
 	ctx_flush_and_put(ctx, &locked);
@@ -2465,8 +2538,22 @@ static inline unsigned int io_put_rw_kbuf(struct io_kiocb *req)
 
 static inline bool io_run_task_work(void)
 {
+<<<<<<< HEAD
 	if (test_thread_flag(TIF_NOTIFY_SIGNAL) || current->task_works) {
 		__set_current_state(TASK_RUNNING);
+=======
+	/*
+	 * PF_IO_WORKER never returns to userspace, so check here if we have
+	 * notify work that needs processing.
+	 */
+	if (current->flags & PF_IO_WORKER &&
+	    test_thread_flag(TIF_NOTIFY_RESUME)) {
+		__set_current_state(TASK_RUNNING);
+		tracehook_notify_resume(NULL);
+	}
+	if (test_thread_flag(TIF_NOTIFY_SIGNAL) || current->task_works) {
+		__set_current_state(TASK_RUNNING);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		tracehook_notify_signal();
 		return true;
 	}
@@ -2488,17 +2575,49 @@ static void io_iopoll_complete(struct io_ring_ctx *ctx, unsigned int *nr_events,
 
 	io_init_req_batch(&rb);
 	while (!list_empty(done)) {
+<<<<<<< HEAD
 		req = list_first_entry(done, struct io_kiocb, inflight_entry);
 		list_del(&req->inflight_entry);
 
 		io_fill_cqe_req(req, req->result, io_put_rw_kbuf(req));
 		(*nr_events)++;
 
+=======
+		struct io_uring_cqe *cqe;
+		unsigned cflags;
+
+		req = list_first_entry(done, struct io_kiocb, inflight_entry);
+		list_del(&req->inflight_entry);
+		cflags = io_put_rw_kbuf(req);
+		(*nr_events)++;
+
+		cqe = io_get_cqe(ctx);
+		if (cqe) {
+			WRITE_ONCE(cqe->user_data, req->user_data);
+			WRITE_ONCE(cqe->res, req->result);
+			WRITE_ONCE(cqe->flags, cflags);
+		} else {
+			spin_lock(&ctx->completion_lock);
+			io_cqring_event_overflow(ctx, req->user_data,
+							req->result, cflags);
+			spin_unlock(&ctx->completion_lock);
+		}
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		if (req_ref_put_and_test(req))
 			io_req_free_batch(&rb, req, &ctx->submit_state);
 	}
 
+<<<<<<< HEAD
 	io_commit_cqring(ctx);
+=======
+	if (io_commit_needs_flush(ctx)) {
+		spin_lock(&ctx->completion_lock);
+		__io_commit_cqring_flush(ctx);
+		spin_unlock(&ctx->completion_lock);
+	}
+	__io_commit_cqring(ctx);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	io_cqring_ev_posted_iopoll(ctx);
 	io_req_free_batch_finish(ctx, &rb);
 }
@@ -2625,6 +2744,14 @@ static int io_iopoll_check(struct io_ring_ctx *ctx, long min)
 				break;
 		}
 		ret = io_do_iopoll(ctx, &nr_events, min);
+<<<<<<< HEAD
+=======
+
+		if (task_sigpending(current)) {
+			ret = -EINTR;
+			goto out;
+		}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	} while (!ret && nr_events < min && !need_resched());
 out:
 	mutex_unlock(&ctx->uring_lock);
@@ -2692,17 +2819,44 @@ static bool io_rw_should_reissue(struct io_kiocb *req)
 }
 #endif
 
+<<<<<<< HEAD
 static bool __io_complete_rw_common(struct io_kiocb *req, long res)
 {
 	if (req->rw.kiocb.ki_flags & IOCB_WRITE) {
+=======
+/*
+ * Trigger the notifications after having done some IO, and finish the write
+ * accounting, if any.
+ */
+static void io_req_io_end(struct io_kiocb *req)
+{
+	struct io_rw *rw = &req->rw;
+
+	if (rw->kiocb.ki_flags & IOCB_WRITE) {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		kiocb_end_write(req);
 		fsnotify_modify(req->file);
 	} else {
 		fsnotify_access(req->file);
 	}
+<<<<<<< HEAD
 	if (res != req->result) {
 		if ((res == -EAGAIN || res == -EOPNOTSUPP) &&
 		    io_rw_should_reissue(req)) {
+=======
+}
+
+static bool __io_complete_rw_common(struct io_kiocb *req, long res)
+{
+	if (res != req->result) {
+		if ((res == -EAGAIN || res == -EOPNOTSUPP) &&
+		    io_rw_should_reissue(req)) {
+			/*
+			 * Reissue will start accounting again, finish the
+			 * current cycle.
+			 */
+			io_req_io_end(req);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			req->flags |= REQ_F_REISSUE;
 			return true;
 		}
@@ -2712,7 +2866,11 @@ static bool __io_complete_rw_common(struct io_kiocb *req, long res)
 	return false;
 }
 
+<<<<<<< HEAD
 static inline int io_fixup_rw_res(struct io_kiocb *req, unsigned res)
+=======
+static inline int io_fixup_rw_res(struct io_kiocb *req, long res)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	struct io_async_rw *io = req->async_data;
 
@@ -2744,12 +2902,19 @@ static void io_req_task_complete(struct io_kiocb *req, bool *locked)
 	}
 }
 
+<<<<<<< HEAD
 static void __io_complete_rw(struct io_kiocb *req, long res, long res2,
 			     unsigned int issue_flags)
 {
 	if (__io_complete_rw_common(req, res))
 		return;
 	__io_req_complete(req, issue_flags, io_fixup_rw_res(req, res), io_put_rw_kbuf(req));
+=======
+static void io_req_rw_complete(struct io_kiocb *req, bool *locked)
+{
+	io_req_io_end(req);
+	io_req_task_complete(req, locked);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 static void io_complete_rw(struct kiocb *kiocb, long res, long res2)
@@ -2759,7 +2924,11 @@ static void io_complete_rw(struct kiocb *kiocb, long res, long res2)
 	if (__io_complete_rw_common(req, res))
 		return;
 	req->result = io_fixup_rw_res(req, res);
+<<<<<<< HEAD
 	req->io_task_work.func = io_req_task_complete;
+=======
+	req->io_task_work.func = io_req_rw_complete;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	io_req_task_work_add(req);
 }
 
@@ -2911,6 +3080,7 @@ static int io_prep_rw(struct io_kiocb *req, const struct io_uring_sqe *sqe,
 		req->flags |= REQ_F_ISREG;
 
 	kiocb->ki_pos = READ_ONCE(sqe->off);
+<<<<<<< HEAD
 	if (kiocb->ki_pos == -1) {
 		if (!(file->f_mode & FMODE_STREAM)) {
 			req->flags |= REQ_F_CUR_POS;
@@ -2919,6 +3089,8 @@ static int io_prep_rw(struct io_kiocb *req, const struct io_uring_sqe *sqe,
 			kiocb->ki_pos = 0;
 		}
 	}
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	kiocb->ki_hint = ki_hint_validate(file_write_hint(kiocb->ki_filp));
 	kiocb->ki_flags = iocb_flags(kiocb->ki_filp);
 	ret = kiocb_set_rw_flags(kiocb, READ_ONCE(sqe->rw_flags));
@@ -3000,6 +3172,23 @@ static inline void io_rw_done(struct kiocb *kiocb, ssize_t ret)
 	}
 }
 
+static inline loff_t *io_kiocb_update_pos(struct io_kiocb *req)
+{
+	struct kiocb *kiocb = &req->rw.kiocb;
+
+	if (kiocb->ki_pos != -1)
+		return &kiocb->ki_pos;
+
+	if (!(req->file->f_mode & FMODE_STREAM)) {
+		req->flags |= REQ_F_CUR_POS;
+		kiocb->ki_pos = req->file->f_pos;
+		return &kiocb->ki_pos;
+	}
+
+	kiocb->ki_pos = 0;
+	return NULL;
+}
+
 static void kiocb_done(struct kiocb *kiocb, ssize_t ret,
 		       unsigned int issue_flags)
 {
@@ -3007,10 +3196,27 @@ static void kiocb_done(struct kiocb *kiocb, ssize_t ret,
 
 	if (req->flags & REQ_F_CUR_POS)
 		req->file->f_pos = kiocb->ki_pos;
+<<<<<<< HEAD
 	if (ret >= 0 && (kiocb->ki_complete == io_complete_rw))
 		__io_complete_rw(req, ret, 0, issue_flags);
 	else
 		io_rw_done(kiocb, ret);
+=======
+	if (ret >= 0 && (kiocb->ki_complete == io_complete_rw)) {
+		if (!__io_complete_rw_common(req, ret)) {
+			/*
+			 * Safe to call io_end from here as we're inline
+			 * from the submission path.
+			 */
+			io_req_io_end(req);
+			__io_req_complete(req, issue_flags,
+					  io_fixup_rw_res(req, ret),
+					  io_put_rw_kbuf(req));
+		}
+	} else {
+		io_rw_done(kiocb, ret);
+	}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	if (req->flags & REQ_F_REISSUE) {
 		req->flags &= ~REQ_F_REISSUE;
@@ -3072,7 +3278,7 @@ static int __io_import_fixed(struct io_kiocb *req, int rw, struct iov_iter *iter
 		 */
 		const struct bio_vec *bvec = imu->bvec;
 
-		if (offset <= bvec->bv_len) {
+		if (offset < bvec->bv_len) {
 			iov_iter_advance(iter, offset);
 		} else {
 			unsigned long seg_skip;
@@ -3292,6 +3498,7 @@ static ssize_t loop_rw_iter(int rw, struct io_kiocb *req, struct iov_iter *iter)
 	struct kiocb *kiocb = &req->rw.kiocb;
 	struct file *file = req->file;
 	ssize_t ret = 0;
+	loff_t *ppos;
 
 	/*
 	 * Don't support polled IO through this interface, and we can't
@@ -3302,6 +3509,8 @@ static ssize_t loop_rw_iter(int rw, struct io_kiocb *req, struct iov_iter *iter)
 		return -EOPNOTSUPP;
 	if (kiocb->ki_flags & IOCB_NOWAIT)
 		return -EAGAIN;
+
+	ppos = io_kiocb_ppos(kiocb);
 
 	while (iov_iter_count(iter)) {
 		struct iovec iovec;
@@ -3316,10 +3525,10 @@ static ssize_t loop_rw_iter(int rw, struct io_kiocb *req, struct iov_iter *iter)
 
 		if (rw == READ) {
 			nr = file->f_op->read(file, iovec.iov_base,
-					      iovec.iov_len, io_kiocb_ppos(kiocb));
+					      iovec.iov_len, ppos);
 		} else {
 			nr = file->f_op->write(file, iovec.iov_base,
-					       iovec.iov_len, io_kiocb_ppos(kiocb));
+					       iovec.iov_len, ppos);
 		}
 
 		if (nr < 0) {
@@ -3520,6 +3729,10 @@ static int io_read(struct io_kiocb *req, unsigned int issue_flags)
 	bool force_nonblock = issue_flags & IO_URING_F_NONBLOCK;
 	struct iov_iter_state __state, *state;
 	ssize_t ret, ret2;
+<<<<<<< HEAD
+=======
+	loff_t *ppos;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	if (rw) {
 		iter = &rw->iter;
@@ -3552,7 +3765,13 @@ static int io_read(struct io_kiocb *req, unsigned int issue_flags)
 		return ret ?: -EAGAIN;
 	}
 
+<<<<<<< HEAD
 	ret = rw_verify_area(READ, req->file, io_kiocb_ppos(kiocb), req->result);
+=======
+	ppos = io_kiocb_update_pos(req);
+
+	ret = rw_verify_area(READ, req->file, ppos, req->result);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (unlikely(ret)) {
 		kfree(iovec);
 		return ret;
@@ -3656,6 +3875,10 @@ static int io_write(struct io_kiocb *req, unsigned int issue_flags)
 	bool force_nonblock = issue_flags & IO_URING_F_NONBLOCK;
 	struct iov_iter_state __state, *state;
 	ssize_t ret, ret2;
+<<<<<<< HEAD
+=======
+	loff_t *ppos;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	if (rw) {
 		iter = &rw->iter;
@@ -3686,7 +3909,13 @@ static int io_write(struct io_kiocb *req, unsigned int issue_flags)
 	    (req->flags & REQ_F_ISREG))
 		goto copy_iov;
 
+<<<<<<< HEAD
 	ret = rw_verify_area(WRITE, req->file, io_kiocb_ppos(kiocb), req->result);
+=======
+	ppos = io_kiocb_update_pos(req);
+
+	ret = rw_verify_area(WRITE, req->file, ppos, req->result);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (unlikely(ret))
 		goto out_free;
 
@@ -3926,7 +4155,11 @@ static int io_tee(struct io_kiocb *req, unsigned int issue_flags)
 		return -EAGAIN;
 
 	in = io_file_get(req->ctx, req, sp->splice_fd_in,
+<<<<<<< HEAD
 				  (sp->flags & SPLICE_F_FD_IN_FIXED));
+=======
+			 (sp->flags & SPLICE_F_FD_IN_FIXED), issue_flags);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (!in) {
 		ret = -EBADF;
 		goto done;
@@ -3966,7 +4199,11 @@ static int io_splice(struct io_kiocb *req, unsigned int issue_flags)
 		return -EAGAIN;
 
 	in = io_file_get(req->ctx, req, sp->splice_fd_in,
+<<<<<<< HEAD
 				  (sp->flags & SPLICE_F_FD_IN_FIXED));
+=======
+			 (sp->flags & SPLICE_F_FD_IN_FIXED), issue_flags);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (!in) {
 		ret = -EBADF;
 		goto done;
@@ -4148,9 +4385,17 @@ static int io_openat2(struct io_kiocb *req, unsigned int issue_flags)
 	if (issue_flags & IO_URING_F_NONBLOCK) {
 		/*
 		 * Don't bother trying for O_TRUNC, O_CREAT, or O_TMPFILE open,
+<<<<<<< HEAD
 		 * it'll always -EAGAIN
 		 */
 		if (req->open.how.flags & (O_TRUNC | O_CREAT | O_TMPFILE))
+=======
+		 * it'll always -EAGAIN. Note that we test for __O_TMPFILE
+		 * because O_TMPFILE includes O_DIRECTORY, which isn't a flag
+		 * we need to force async for.
+		 */
+		if (req->open.how.flags & (O_TRUNC | O_CREAT | __O_TMPFILE))
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 			return -EAGAIN;
 		op.lookup_flags |= LOOKUP_CACHED;
 		op.open_flag |= O_NONBLOCK;
@@ -4623,6 +4868,13 @@ static int io_sync_file_range(struct io_kiocb *req, unsigned int issue_flags)
 }
 
 #if defined(CONFIG_NET)
+static bool io_net_retry(struct socket *sock, int flags)
+{
+	if (!(flags & MSG_WAITALL))
+		return false;
+	return sock->type == SOCK_STREAM || sock->type == SOCK_SEQPACKET;
+}
+
 static int io_setup_async_msg(struct io_kiocb *req,
 			      struct io_async_msghdr *kmsg)
 {
@@ -4640,8 +4892,15 @@ static int io_setup_async_msg(struct io_kiocb *req,
 	if (async_msg->msg.msg_name)
 		async_msg->msg.msg_name = &async_msg->addr;
 	/* if were using fast_iov, set it to the new one */
+<<<<<<< HEAD
 	if (!async_msg->free_iov)
 		async_msg->msg.msg_iter.iov = async_msg->fast_iov;
+=======
+	if (!kmsg->free_iov) {
+		size_t fast_idx = kmsg->msg.msg_iter.iov - kmsg->fast_iov;
+		async_msg->msg.msg_iter.iov = &async_msg->fast_iov[fast_idx];
+	}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	return -EAGAIN;
 }
@@ -4649,6 +4908,7 @@ static int io_setup_async_msg(struct io_kiocb *req,
 static int io_sendmsg_copy_hdr(struct io_kiocb *req,
 			       struct io_async_msghdr *iomsg)
 {
+<<<<<<< HEAD
 	iomsg->msg.msg_name = &iomsg->addr;
 	iomsg->free_iov = iomsg->fast_iov;
 	return sendmsg_copy_msghdr(&iomsg->msg, req->sr_msg.umsg,
@@ -4659,6 +4919,24 @@ static int io_sendmsg_prep_async(struct io_kiocb *req)
 {
 	int ret;
 
+=======
+	struct io_sr_msg *sr = &req->sr_msg;
+	int ret;
+
+	iomsg->msg.msg_name = &iomsg->addr;
+	iomsg->free_iov = iomsg->fast_iov;
+	ret = sendmsg_copy_msghdr(&iomsg->msg, req->sr_msg.umsg,
+				   req->sr_msg.msg_flags, &iomsg->free_iov);
+	/* save msg_control as sys_sendmsg() overwrites it */
+	sr->msg_control = iomsg->msg.msg_control;
+	return ret;
+}
+
+static int io_sendmsg_prep_async(struct io_kiocb *req)
+{
+	int ret;
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	ret = io_sendmsg_copy_hdr(req, req->async_data);
 	if (!ret)
 		req->flags |= REQ_F_NEED_CLEANUP;
@@ -4686,12 +4964,17 @@ static int io_sendmsg_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 	if (req->ctx->compat)
 		sr->msg_flags |= MSG_CMSG_COMPAT;
 #endif
+<<<<<<< HEAD
+=======
+	sr->done_io = 0;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	return 0;
 }
 
 static int io_sendmsg(struct io_kiocb *req, unsigned int issue_flags)
 {
 	struct io_async_msghdr iomsg, *kmsg;
+	struct io_sr_msg *sr = &req->sr_msg;
 	struct socket *sock;
 	unsigned flags;
 	int min_ret = 0;
@@ -4707,6 +4990,8 @@ static int io_sendmsg(struct io_kiocb *req, unsigned int issue_flags)
 		if (ret)
 			return ret;
 		kmsg = &iomsg;
+	} else {
+		kmsg->msg.msg_control = sr->msg_control;
 	}
 
 	flags = req->sr_msg.msg_flags;
@@ -4716,17 +5001,40 @@ static int io_sendmsg(struct io_kiocb *req, unsigned int issue_flags)
 		min_ret = iov_iter_count(&kmsg->msg.msg_iter);
 
 	ret = __sys_sendmsg_sock(sock, &kmsg->msg, flags);
+<<<<<<< HEAD
 	if ((issue_flags & IO_URING_F_NONBLOCK) && ret == -EAGAIN)
 		return io_setup_async_msg(req, kmsg);
 	if (ret == -ERESTARTSYS)
 		ret = -EINTR;
 
+=======
+
+	if (ret < min_ret) {
+		if (ret == -EAGAIN && (issue_flags & IO_URING_F_NONBLOCK))
+			return io_setup_async_msg(req, kmsg);
+		if (ret == -ERESTARTSYS)
+			ret = -EINTR;
+		if (ret > 0 && io_net_retry(sock, flags)) {
+			sr->done_io += ret;
+			req->flags |= REQ_F_PARTIAL_IO;
+			return io_setup_async_msg(req, kmsg);
+		}
+		req_set_fail(req);
+	}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	/* fast path, check for non-NULL to avoid function call */
 	if (kmsg->free_iov)
 		kfree(kmsg->free_iov);
 	req->flags &= ~REQ_F_NEED_CLEANUP;
+<<<<<<< HEAD
 	if (ret < min_ret)
 		req_set_fail(req);
+=======
+	if (ret >= 0)
+		ret += sr->done_io;
+	else if (sr->done_io)
+		ret = sr->done_io;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	__io_req_complete(req, issue_flags, ret, 0);
 	return 0;
 }
@@ -4762,6 +5070,7 @@ static int io_send(struct io_kiocb *req, unsigned int issue_flags)
 
 	msg.msg_flags = flags;
 	ret = sock_sendmsg(sock, &msg);
+<<<<<<< HEAD
 	if ((issue_flags & IO_URING_F_NONBLOCK) && ret == -EAGAIN)
 		return -EAGAIN;
 	if (ret == -ERESTARTSYS)
@@ -4769,6 +5078,26 @@ static int io_send(struct io_kiocb *req, unsigned int issue_flags)
 
 	if (ret < min_ret)
 		req_set_fail(req);
+=======
+	if (ret < min_ret) {
+		if (ret == -EAGAIN && (issue_flags & IO_URING_F_NONBLOCK))
+			return -EAGAIN;
+		if (ret == -ERESTARTSYS)
+			ret = -EINTR;
+		if (ret > 0 && io_net_retry(sock, flags)) {
+			sr->len -= ret;
+			sr->buf += ret;
+			sr->done_io += ret;
+			req->flags |= REQ_F_PARTIAL_IO;
+			return -EAGAIN;
+		}
+		req_set_fail(req);
+	}
+	if (ret >= 0)
+		ret += sr->done_io;
+	else if (sr->done_io)
+		ret = sr->done_io;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	__io_req_complete(req, issue_flags, ret, 0);
 	return 0;
 }
@@ -4904,7 +5233,11 @@ static int io_recvmsg_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 	sr->umsg = u64_to_user_ptr(READ_ONCE(sqe->addr));
 	sr->len = READ_ONCE(sqe->len);
 	sr->bgid = READ_ONCE(sqe->buf_group);
+<<<<<<< HEAD
 	sr->msg_flags = READ_ONCE(sqe->msg_flags) | MSG_NOSIGNAL;
+=======
+	sr->msg_flags = READ_ONCE(sqe->msg_flags);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (sr->msg_flags & MSG_DONTWAIT)
 		req->flags |= REQ_F_NOWAIT;
 
@@ -4912,12 +5245,17 @@ static int io_recvmsg_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 	if (req->ctx->compat)
 		sr->msg_flags |= MSG_CMSG_COMPAT;
 #endif
+<<<<<<< HEAD
+=======
+	sr->done_io = 0;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	return 0;
 }
 
 static int io_recvmsg(struct io_kiocb *req, unsigned int issue_flags)
 {
 	struct io_async_msghdr iomsg, *kmsg;
+	struct io_sr_msg *sr = &req->sr_msg;
 	struct socket *sock;
 	struct io_buffer *kbuf;
 	unsigned flags;
@@ -4950,15 +5288,31 @@ static int io_recvmsg(struct io_kiocb *req, unsigned int issue_flags)
 	flags = req->sr_msg.msg_flags;
 	if (force_nonblock)
 		flags |= MSG_DONTWAIT;
+<<<<<<< HEAD
 	if (flags & MSG_WAITALL)
+=======
+	if (flags & MSG_WAITALL && !kmsg->msg.msg_controllen)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		min_ret = iov_iter_count(&kmsg->msg.msg_iter);
 
 	ret = __sys_recvmsg_sock(sock, &kmsg->msg, req->sr_msg.umsg,
 					kmsg->uaddr, flags);
-	if (force_nonblock && ret == -EAGAIN)
-		return io_setup_async_msg(req, kmsg);
-	if (ret == -ERESTARTSYS)
-		ret = -EINTR;
+	if (ret < min_ret) {
+		if (ret == -EAGAIN && force_nonblock)
+			return io_setup_async_msg(req, kmsg);
+		if (ret == -ERESTARTSYS)
+			ret = -EINTR;
+		if (ret > 0 && io_net_retry(sock, flags)) {
+			kmsg->msg.msg_controllen = 0;
+			kmsg->msg.msg_control = NULL;
+			sr->done_io += ret;
+			req->flags |= REQ_F_PARTIAL_IO;
+			return io_setup_async_msg(req, kmsg);
+		}
+		req_set_fail(req);
+	} else if ((flags & MSG_WAITALL) && (kmsg->msg.msg_flags & (MSG_TRUNC | MSG_CTRUNC))) {
+		req_set_fail(req);
+	}
 
 	if (req->flags & REQ_F_BUFFER_SELECTED)
 		cflags = io_put_recv_kbuf(req);
@@ -4966,8 +5320,15 @@ static int io_recvmsg(struct io_kiocb *req, unsigned int issue_flags)
 	if (kmsg->free_iov)
 		kfree(kmsg->free_iov);
 	req->flags &= ~REQ_F_NEED_CLEANUP;
+<<<<<<< HEAD
 	if (ret < min_ret || ((flags & MSG_WAITALL) && (kmsg->msg.msg_flags & (MSG_TRUNC | MSG_CTRUNC))))
 		req_set_fail(req);
+=======
+	if (ret >= 0)
+		ret += sr->done_io;
+	else if (sr->done_io)
+		ret = sr->done_io;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	__io_req_complete(req, issue_flags, ret, cflags);
 	return 0;
 }
@@ -5014,15 +5375,34 @@ static int io_recv(struct io_kiocb *req, unsigned int issue_flags)
 		min_ret = iov_iter_count(&msg.msg_iter);
 
 	ret = sock_recvmsg(sock, &msg, flags);
-	if (force_nonblock && ret == -EAGAIN)
-		return -EAGAIN;
-	if (ret == -ERESTARTSYS)
-		ret = -EINTR;
+	if (ret < min_ret) {
+		if (ret == -EAGAIN && force_nonblock)
+			return -EAGAIN;
+		if (ret == -ERESTARTSYS)
+			ret = -EINTR;
+		if (ret > 0 && io_net_retry(sock, flags)) {
+			sr->len -= ret;
+			sr->buf += ret;
+			sr->done_io += ret;
+			req->flags |= REQ_F_PARTIAL_IO;
+			return -EAGAIN;
+		}
+		req_set_fail(req);
+	} else if ((flags & MSG_WAITALL) && (msg.msg_flags & (MSG_TRUNC | MSG_CTRUNC))) {
 out_free:
+		req_set_fail(req);
+	}
 	if (req->flags & REQ_F_BUFFER_SELECTED)
 		cflags = io_put_recv_kbuf(req);
+<<<<<<< HEAD
 	if (ret < min_ret || ((flags & MSG_WAITALL) && (msg.msg_flags & (MSG_TRUNC | MSG_CTRUNC))))
 		req_set_fail(req);
+=======
+	if (ret >= 0)
+		ret += sr->done_io;
+	else if (sr->done_io)
+		ret = sr->done_io;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	__io_req_complete(req, issue_flags, ret, cflags);
 	return 0;
 }
@@ -5060,9 +5440,6 @@ static int io_accept(struct io_kiocb *req, unsigned int issue_flags)
 	struct file *file;
 	int ret, fd;
 
-	if (req->file->f_flags & O_NONBLOCK)
-		req->flags |= REQ_F_NOWAIT;
-
 	if (!fixed) {
 		fd = __get_unused_fd_flags(accept->flags, accept->nofile);
 		if (unlikely(fd < 0))
@@ -5071,10 +5448,26 @@ static int io_accept(struct io_kiocb *req, unsigned int issue_flags)
 	file = do_accept(req->file, file_flags, accept->addr, accept->addr_len,
 			 accept->flags);
 
+<<<<<<< HEAD
+	if (!fixed) {
+		fd = __get_unused_fd_flags(accept->flags, accept->nofile);
+		if (unlikely(fd < 0))
+			return fd;
+	}
+	file = do_accept(req->file, file_flags, accept->addr, accept->addr_len,
+			 accept->flags);
+
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (IS_ERR(file)) {
 		if (!fixed)
 			put_unused_fd(fd);
 		ret = PTR_ERR(file);
+<<<<<<< HEAD
+=======
+		/* safe to retry */
+		req->flags |= REQ_F_PARTIAL_IO;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		if (ret == -EAGAIN && force_nonblock)
 			return -EAGAIN;
 		if (ret == -ERESTARTSYS)
@@ -5419,6 +5812,10 @@ static void io_apoll_task_func(struct io_kiocb *req, bool *locked)
 	if (ret > 0)
 		return;
 
+<<<<<<< HEAD
+=======
+	io_tw_lock(req->ctx, locked);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	io_poll_remove_entries(req);
 	spin_lock(&ctx->completion_lock);
 	hash_del(&req->hash_node);
@@ -5631,6 +6028,17 @@ enum {
 	IO_APOLL_READY
 };
 
+<<<<<<< HEAD
+=======
+/*
+ * We can't reliably detect loops in repeated poll triggers and issue
+ * subsequently failing. But rather than fail these immediately, allow a
+ * certain amount of retries before we give up. Given that this condition
+ * should _rarely_ trigger even once, we should be fine with a larger value.
+ */
+#define APOLL_MAX_RETRY		128
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 static int io_arm_poll_handler(struct io_kiocb *req)
 {
 	const struct io_op_def *def = &io_op_defs[req->opcode];
@@ -5642,6 +6050,7 @@ static int io_arm_poll_handler(struct io_kiocb *req)
 
 	if (!req->file || !file_can_poll(req->file))
 		return IO_APOLL_ABORTED;
+<<<<<<< HEAD
 	if (req->flags & REQ_F_POLLED)
 		return IO_APOLL_ABORTED;
 	if (!def->pollin && !def->pollout)
@@ -5661,6 +6070,35 @@ static int io_arm_poll_handler(struct io_kiocb *req)
 	apoll = kmalloc(sizeof(*apoll), GFP_ATOMIC);
 	if (unlikely(!apoll))
 		return IO_APOLL_ABORTED;
+=======
+	if (!def->pollin && !def->pollout)
+		return IO_APOLL_ABORTED;
+
+	if (def->pollin) {
+		mask |= POLLIN | POLLRDNORM;
+
+		/* If reading from MSG_ERRQUEUE using recvmsg, ignore POLLIN */
+		if ((req->opcode == IORING_OP_RECVMSG) &&
+		    (req->sr_msg.msg_flags & MSG_ERRQUEUE))
+			mask &= ~POLLIN;
+	} else {
+		mask |= POLLOUT | POLLWRNORM;
+	}
+
+	if (req->flags & REQ_F_POLLED) {
+		apoll = req->apoll;
+		kfree(apoll->double_poll);
+		if (unlikely(!--apoll->poll.retries)) {
+			apoll->double_poll = NULL;
+			return IO_APOLL_ABORTED;
+		}
+	} else {
+		apoll = kmalloc(sizeof(*apoll), GFP_ATOMIC);
+		if (unlikely(!apoll))
+			return IO_APOLL_ABORTED;
+		apoll->poll.retries = APOLL_MAX_RETRY;
+	}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	apoll->double_poll = NULL;
 	req->apoll = apoll;
 	req->flags |= REQ_F_POLLED;
@@ -5831,6 +6269,11 @@ static int io_poll_update(struct io_kiocb *req, unsigned int issue_flags)
 	struct io_kiocb *preq;
 	int ret2, ret = 0;
 
+<<<<<<< HEAD
+=======
+	io_ring_submit_lock(ctx, !(issue_flags & IO_URING_F_NONBLOCK));
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	spin_lock(&ctx->completion_lock);
 	preq = io_poll_find(ctx, req->poll_update.old_user_data, true);
 	if (!preq || !io_poll_disarm(preq)) {
@@ -5862,6 +6305,10 @@ out:
 		req_set_fail(req);
 	/* complete update request, we're done with it */
 	io_req_complete(req, ret);
+<<<<<<< HEAD
+=======
+	io_ring_submit_unlock(ctx, !(issue_flags & IO_URING_F_NONBLOCK));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	return 0;
 }
 
@@ -6711,7 +7158,10 @@ static void io_wq_submit_work(struct io_wq_work *work)
 	timeout = io_prep_linked_timeout(req);
 	if (timeout)
 		io_queue_linked_timeout(timeout);
+<<<<<<< HEAD
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	/* either cancelled or io-wq is dying, so don't touch tctx->iowq */
 	if (work->flags & IO_WQ_WORK_CANCEL)
 		ret = -ECANCELED;
@@ -6726,6 +7176,15 @@ static void io_wq_submit_work(struct io_wq_work *work)
 			 */
 			if (ret != -EAGAIN || !(req->ctx->flags & IORING_SETUP_IOPOLL))
 				break;
+			if (io_wq_worker_stopped())
+				break;
+			/*
+			 * If REQ_F_NOWAIT is set, then don't wait or retry with
+			 * poll. -EAGAIN is final for that case.
+			 */
+			if (req->flags & REQ_F_NOWAIT)
+				break;
+
 			cond_resched();
 		} while (1);
 	}
@@ -6750,6 +7209,7 @@ static inline struct file *io_file_from_index(struct io_ring_ctx *ctx,
 }
 
 static void io_fixed_file_set(struct io_fixed_file *file_slot, struct file *file)
+<<<<<<< HEAD
 {
 	unsigned long file_ptr = (unsigned long) file;
 
@@ -6770,6 +7230,31 @@ static inline struct file *io_file_get_fixed(struct io_ring_ctx *ctx,
 
 	if (unlikely((unsigned int)fd >= ctx->nr_user_files))
 		return NULL;
+=======
+{
+	unsigned long file_ptr = (unsigned long) file;
+
+	if (__io_file_supports_nowait(file, READ))
+		file_ptr |= FFS_ASYNC_READ;
+	if (__io_file_supports_nowait(file, WRITE))
+		file_ptr |= FFS_ASYNC_WRITE;
+	if (S_ISREG(file_inode(file)->i_mode))
+		file_ptr |= FFS_ISREG;
+	file_slot->file_ptr = file_ptr;
+}
+
+static inline struct file *io_file_get_fixed(struct io_ring_ctx *ctx,
+					     struct io_kiocb *req, int fd,
+					     unsigned int issue_flags)
+{
+	struct file *file = NULL;
+	unsigned long file_ptr;
+
+	io_ring_submit_lock(ctx, !(issue_flags & IO_URING_F_NONBLOCK));
+
+	if (unlikely((unsigned int)fd >= ctx->nr_user_files))
+		goto out;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	fd = array_index_nospec(fd, ctx->nr_user_files);
 	file_ptr = io_fixed_file_slot(&ctx->file_table, fd)->file_ptr;
 	file = (struct file *) (file_ptr & FFS_MASK);
@@ -6777,6 +7262,11 @@ static inline struct file *io_file_get_fixed(struct io_ring_ctx *ctx,
 	/* mask in overlapping REQ_F and FFS bits */
 	req->flags |= (file_ptr << REQ_F_NOWAIT_READ_BIT);
 	io_req_set_rsrc_node(req);
+<<<<<<< HEAD
+=======
+out:
+	io_ring_submit_unlock(ctx, !(issue_flags & IO_URING_F_NONBLOCK));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	return file;
 }
 
@@ -6794,10 +7284,18 @@ static struct file *io_file_get_normal(struct io_ring_ctx *ctx,
 }
 
 static inline struct file *io_file_get(struct io_ring_ctx *ctx,
+<<<<<<< HEAD
 				       struct io_kiocb *req, int fd, bool fixed)
 {
 	if (fixed)
 		return io_file_get_fixed(ctx, req, fd);
+=======
+				       struct io_kiocb *req, int fd, bool fixed,
+				       unsigned int issue_flags)
+{
+	if (fixed)
+		return io_file_get_fixed(ctx, req, fd, issue_flags);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	else
 		return io_file_get_normal(ctx, req, fd);
 }
@@ -7019,7 +7517,12 @@ static int io_init_req(struct io_ring_ctx *ctx, struct io_kiocb *req,
 
 	if (io_op_defs[req->opcode].needs_file) {
 		req->file = io_file_get(ctx, req, READ_ONCE(sqe->fd),
+<<<<<<< HEAD
 					(sqe_flags & IOSQE_FIXED_FILE));
+=======
+					(sqe_flags & IOSQE_FIXED_FILE),
+					IO_URING_F_NONBLOCK);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		if (unlikely(!req->file))
 			ret = -EBADF;
 	}
@@ -7447,12 +7950,30 @@ static int io_run_task_work_sig(void)
 	return -EINTR;
 }
 
+<<<<<<< HEAD
 /* when returns >0, the caller should retry */
 static inline int io_cqring_wait_schedule(struct io_ring_ctx *ctx,
 					  struct io_wait_queue *iowq,
 					  ktime_t timeout)
 {
 	int ret;
+=======
+static bool current_pending_io(void)
+{
+	struct io_uring_task *tctx = current->io_uring;
+
+	if (!tctx)
+		return false;
+	return percpu_counter_read_positive(&tctx->inflight);
+}
+
+/* when returns >0, the caller should retry */
+static inline int io_cqring_wait_schedule(struct io_ring_ctx *ctx,
+					  struct io_wait_queue *iowq,
+					  ktime_t *timeout)
+{
+	int io_wait, ret;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	/* make sure we run task_work before checking for signals */
 	ret = io_run_task_work_sig();
@@ -7462,9 +7983,25 @@ static inline int io_cqring_wait_schedule(struct io_ring_ctx *ctx,
 	if (test_bit(0, &ctx->check_cq_overflow))
 		return 1;
 
+<<<<<<< HEAD
 	if (!schedule_hrtimeout(&timeout, HRTIMER_MODE_ABS))
 		return -ETIME;
 	return 1;
+=======
+	/*
+	 * Mark us as being in io_wait if we have pending requests, so cpufreq
+	 * can take into account that the task is waiting for IO - turns out
+	 * to be important for low QD IO.
+	 */
+	io_wait = current->in_iowait;
+	if (current_pending_io())
+		current->in_iowait = 1;
+	ret = 1;
+	if (!schedule_hrtimeout(timeout, HRTIMER_MODE_ABS))
+		ret = -ETIME;
+	current->in_iowait = io_wait;
+	return ret;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 /*
@@ -7525,7 +8062,11 @@ static int io_cqring_wait(struct io_ring_ctx *ctx, int min_events,
 		}
 		prepare_to_wait_exclusive(&ctx->cq_wait, &iowq.wq,
 						TASK_INTERRUPTIBLE);
+<<<<<<< HEAD
 		ret = io_cqring_wait_schedule(ctx, &iowq, timeout);
+=======
+		ret = io_cqring_wait_schedule(ctx, &iowq, &timeout);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		finish_wait(&ctx->cq_wait, &iowq.wq);
 		cond_resched();
 	} while (ret > 0);
@@ -8240,14 +8781,13 @@ out_free:
 	return ret;
 }
 
-static int io_sqe_file_register(struct io_ring_ctx *ctx, struct file *file,
-				int index)
+static int io_queue_rsrc_removal(struct io_rsrc_data *data, unsigned idx,
+				 struct io_rsrc_node *node, void *rsrc)
 {
-#if defined(CONFIG_UNIX)
-	struct sock *sock = ctx->ring_sock->sk;
-	struct sk_buff_head *head = &sock->sk_receive_queue;
-	struct sk_buff *skb;
+	u64 *tag_slot = io_get_tag_slot(data, idx);
+	struct io_rsrc_put *prsrc;
 
+<<<<<<< HEAD
 	/*
 	 * See if we can merge this file into an existing skb SCM_RIGHTS
 	 * file set. If there's no room, fall back to allocating a new skb
@@ -8289,6 +8829,8 @@ static int io_queue_rsrc_removal(struct io_rsrc_data *data, unsigned idx,
 	u64 *tag_slot = io_get_tag_slot(data, idx);
 	struct io_rsrc_put *prsrc;
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	prsrc = kzalloc(sizeof(*prsrc), GFP_KERNEL);
 	if (!prsrc)
 		return -ENOMEM;
@@ -8340,12 +8882,15 @@ static int io_install_fixed_file(struct io_kiocb *req, struct file *file,
 
 	*io_get_tag_slot(ctx->file_data, slot_index) = 0;
 	io_fixed_file_set(file_slot, file);
+<<<<<<< HEAD
 	ret = io_sqe_file_register(ctx, file, slot_index);
 	if (ret) {
 		file_slot->file_ptr = 0;
 		goto err;
 	}
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	ret = 0;
 err:
 	if (needs_switch)
@@ -8459,12 +9004,15 @@ static int __io_sqe_files_update(struct io_ring_ctx *ctx,
 			}
 			*io_get_tag_slot(data, i) = tag;
 			io_fixed_file_set(file_slot, file);
+<<<<<<< HEAD
 			err = io_sqe_file_register(ctx, file, i);
 			if (err) {
 				file_slot->file_ptr = 0;
 				fput(file);
 				break;
 			}
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		}
 	}
 
@@ -8927,6 +9475,7 @@ static int io_sqe_buffer_register(struct io_ring_ctx *ctx, struct iovec *iov,
 	pret = pin_user_pages(ubuf, nr_pages, FOLL_WRITE | FOLL_LONGTERM,
 			      pages, vmas);
 	if (pret == nr_pages) {
+<<<<<<< HEAD
 		/* don't support file backed memory */
 		for (i = 0; i < nr_pages; i++) {
 			struct vm_area_struct *vma = vmas[i];
@@ -8935,6 +9484,19 @@ static int io_sqe_buffer_register(struct io_ring_ctx *ctx, struct iovec *iov,
 				continue;
 			if (vma->vm_file &&
 			    !is_file_hugepages(vma->vm_file)) {
+=======
+		struct file *file = vmas[0]->vm_file;
+
+		/* don't support file backed memory */
+		for (i = 0; i < nr_pages; i++) {
+			if (vmas[i]->vm_file != file) {
+				ret = -EINVAL;
+				break;
+			}
+			if (!file)
+				continue;
+			if (!vma_is_shmem(vmas[i]) && !is_file_hugepages(file)) {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 				ret = -EOPNOTSUPP;
 				break;
 			}
@@ -9367,7 +9929,22 @@ static void io_ring_exit_work(struct work_struct *work)
 			/* there is little hope left, don't run it too often */
 			interval = HZ * 60;
 		}
+<<<<<<< HEAD
 	} while (!wait_for_completion_timeout(&ctx->ref_comp, interval));
+=======
+		/*
+		 * This is really an uninterruptible wait, as it has to be
+		 * complete. But it's also run from a kworker, which doesn't
+		 * take signals, so it's fine to make it interruptible. This
+		 * avoids scenarios where we knowingly can wait much longer
+		 * on completions, for example if someone does a SIGSTOP on
+		 * a task that needs to finish task_work to make this loop
+		 * complete. That's a synthetic situation that should not
+		 * cause a stuck task backtrace, and hence a potential panic
+		 * on stuck tasks if that is enabled.
+		 */
+	} while (!wait_for_completion_interruptible_timeout(&ctx->ref_comp, interval));
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	init_completion(&exit.completion);
 	init_task_work(&exit.task_work, io_tctx_exit_cb);
@@ -9392,7 +9969,16 @@ static void io_ring_exit_work(struct work_struct *work)
 		wake_up_process(node->task);
 
 		mutex_unlock(&ctx->uring_lock);
+<<<<<<< HEAD
 		wait_for_completion(&exit.completion);
+=======
+		/*
+		 * See comment above for
+		 * wait_for_completion_interruptible_timeout() on why this
+		 * wait is marked as interruptible.
+		 */
+		wait_for_completion_interruptible(&exit.completion);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		mutex_lock(&ctx->uring_lock);
 	}
 	mutex_unlock(&ctx->uring_lock);
@@ -9444,6 +10030,13 @@ static void io_ring_ctx_wait_and_kill(struct io_ring_ctx *ctx)
 
 	/* if we failed setting up the ctx, we might not have any rings */
 	io_iopoll_try_reap_events(ctx);
+<<<<<<< HEAD
+=======
+
+	/* drop cached put refs after potentially doing completions */
+	if (current->io_uring)
+		io_uring_drop_tctx_refs(current);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	INIT_WORK(&ctx->exit_work, io_ring_exit_work);
 	/*
@@ -9556,6 +10149,7 @@ static void io_uring_try_cancel_requests(struct io_ring_ctx *ctx,
 			while (!list_empty_careful(&ctx->iopoll_list)) {
 				io_iopoll_try_reap_events(ctx);
 				ret = true;
+				cond_resched();
 			}
 		}
 
@@ -10002,7 +10596,7 @@ static int io_uring_show_cred(struct seq_file *m, unsigned int id,
 
 static void __io_uring_show_fdinfo(struct io_ring_ctx *ctx, struct seq_file *m)
 {
-	struct io_sq_data *sq = NULL;
+	int sq_pid = -1, sq_cpu = -1;
 	bool has_lock;
 	int i;
 
@@ -10015,13 +10609,26 @@ static void __io_uring_show_fdinfo(struct io_ring_ctx *ctx, struct seq_file *m)
 	has_lock = mutex_trylock(&ctx->uring_lock);
 
 	if (has_lock && (ctx->flags & IORING_SETUP_SQPOLL)) {
+<<<<<<< HEAD
 		sq = ctx->sq_data;
 		if (!sq->thread)
 			sq = NULL;
 	}
+=======
+		struct io_sq_data *sq = ctx->sq_data;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
-	seq_printf(m, "SqThread:\t%d\n", sq ? task_pid_nr(sq->thread) : -1);
-	seq_printf(m, "SqThreadCpu:\t%d\n", sq ? task_cpu(sq->thread) : -1);
+		if (mutex_trylock(&sq->lock)) {
+			if (sq->thread) {
+				sq_pid = task_pid_nr(sq->thread);
+				sq_cpu = task_cpu(sq->thread);
+			}
+			mutex_unlock(&sq->lock);
+		}
+	}
+
+	seq_printf(m, "SqThread:\t%d\n", sq_pid);
+	seq_printf(m, "SqThreadCpu:\t%d\n", sq_cpu);
 	seq_printf(m, "UserFiles:\t%u\n", ctx->nr_user_files);
 	for (i = 0; has_lock && i < ctx->nr_user_files; i++) {
 		struct file *f = io_file_from_index(ctx, i);
@@ -10223,7 +10830,11 @@ static int io_uring_create(unsigned entries, struct io_uring_params *p,
 	if (!ctx)
 		return -ENOMEM;
 	ctx->compat = in_compat_syscall();
+<<<<<<< HEAD
 	if (!capable(CAP_IPC_LOCK))
+=======
+	if (!ns_capable_noaudit(&init_user_ns, CAP_IPC_LOCK))
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		ctx->user = get_uid(current_user());
 
 	/*
@@ -10751,8 +11362,11 @@ static int __io_uring_register(struct io_ring_ctx *ctx, unsigned opcode,
 		return -ENXIO;
 
 	if (ctx->restricted) {
+<<<<<<< HEAD
 		if (opcode >= IORING_REGISTER_LAST)
 			return -EINVAL;
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		opcode = array_index_nospec(opcode, IORING_REGISTER_LAST);
 		if (!test_bit(opcode, ctx->restrictions.register_op))
 			return -EACCES;
@@ -10883,6 +11497,9 @@ SYSCALL_DEFINE4(io_uring_register, unsigned int, fd, unsigned int, opcode,
 	struct io_ring_ctx *ctx;
 	long ret = -EBADF;
 	struct fd f;
+
+	if (opcode >= IORING_REGISTER_LAST)
+		return -EINVAL;
 
 	f = fdget(fd);
 	if (!f.file)

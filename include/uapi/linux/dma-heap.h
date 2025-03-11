@@ -46,6 +46,31 @@ struct dma_heap_phys_data {
 
 #define DMA_HEAP_IOC_MAGIC		'H'
 
+enum dma_heap_flag_owner_id {
+	OWNER_DEFAULT = 0,
+	OWNER_GPU,
+	OWNER_MEDIA_CODEC,
+	COUNT_DMA_HEAP_FLAG_OWNER,
+};
+
+#define OWNER_OFFSET_BIT 27 /* 27 bit */
+#define OWNER_MASK (0xfUL << OWNER_OFFSET_BIT)
+
+/* Use the 27-30 bits of heap flags as owner_id flag */
+static inline void set_owner_id_for_heap_flags(__u64 *heap_flags, __u64 owner_id)
+{
+	if (heap_flags == NULL || owner_id >= COUNT_DMA_HEAP_FLAG_OWNER) {
+		return;
+	}
+	*heap_flags |= owner_id << OWNER_OFFSET_BIT;
+}
+
+/* To get the binary number of owner_id */
+static inline __u64 get_owner_id_from_heap_flags(__u64 heap_flags)
+{
+	return (heap_flags & OWNER_MASK) >> OWNER_OFFSET_BIT;
+}
+
 /**
  * DOC: DMA_HEAP_IOCTL_ALLOC - allocate memory from pool
  *

@@ -1354,9 +1354,26 @@ static void update_and_free_page(struct hstate *h, struct page *page)
 	}
 	VM_BUG_ON_PAGE(hugetlb_cgroup_from_page(page), page);
 	VM_BUG_ON_PAGE(hugetlb_cgroup_from_page_rsvd(page), page);
-	set_compound_page_dtor(page, NULL_COMPOUND_DTOR);
+	/*
+	 * Very subtle
+	 *
+	 * For non-gigantic pages set the destructor to the normal compound
+	 * page dtor.  This is needed in case someone takes an additional
+	 * temporary ref to the page, and freeing is delayed until they drop
+	 * their reference.
+	 *
+	 * For gigantic pages set the destructor to the null dtor.  This
+	 * destructor will never be called.  Before freeing the gigantic
+	 * page destroy_compound_gigantic_page will turn the compound page
+	 * into a simple group of pages.  After this the destructor does not
+	 * apply.
+	 *
+	 * This handles the case where more than one ref is held when and
+	 * after update_and_free_page is called.
+	 */
 	set_page_refcounted(page);
 	if (hstate_is_gigantic(h)) {
+		set_compound_page_dtor(page, NULL_COMPOUND_DTOR);
 		/*
 		 * Temporarily drop the hugetlb_lock, because
 		 * we might block in free_gigantic_page().
@@ -1366,6 +1383,7 @@ static void update_and_free_page(struct hstate *h, struct page *page)
 		free_gigantic_page(page, huge_page_order(h));
 		spin_lock(&hugetlb_lock);
 	} else {
+		set_compound_page_dtor(page, COMPOUND_PAGE_DTOR);
 		__free_pages(page, huge_page_order(h));
 	}
 }
@@ -2005,13 +2023,14 @@ struct page *alloc_huge_page_vma(struct hstate *h, struct vm_area_struct *vma,
  * Increase the hugetlb pool such that it can accommodate a reservation
  * of size 'delta'.
  */
-static int gather_surplus_pages(struct hstate *h, int delta)
+static int gather_surplus_pages(struct hstate *h, long delta)
 	__must_hold(&hugetlb_lock)
 {
 	struct list_head surplus_list;
 	struct page *page, *tmp;
-	int ret, i;
-	int needed, allocated;
+	int ret;
+	long i;
+	long needed, allocated;
 	bool alloc_ok = true;
 
 	needed = (h->resv_huge_pages + delta) - h->free_huge_pages;
@@ -4397,10 +4416,35 @@ retry:
 	if (!page) {
 		/* Check for page in userfault range */
 		if (userfaultfd_missing(vma)) {
+<<<<<<< HEAD
 			ret = hugetlb_handle_userfault(vma, mapping, idx,
 						       flags, haddr,
 						       VM_UFFD_MISSING);
 			goto out;
+=======
+			struct vm_fault vmf = {
+				.vma = vma,
+				.address = haddr,
+				.flags = flags,
+				/*
+				 * Hard to debug if it ends up being
+				 * used by a callee that assumes
+				 * something about the other
+				 * uninitialized fields... same as in
+				 * memory.c
+				 */
+			};
+
+			/*
+			 * vma_lock and hugetlb_fault_mutex must be dropped
+			 * before handling userfault. Also mmap_lock will
+			 * be dropped during handling userfault, any vma
+			 * operation should be careful from here.
+			 */
+			mutex_unlock(&hugetlb_fault_mutex_table[hash]);
+			i_mmap_unlock_read(mapping);
+			return handle_userfault(&vmf, VM_UFFD_MISSING);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		}
 
 		page = alloc_huge_page(vma, haddr, 0);
@@ -5696,14 +5740,14 @@ follow_huge_pgd(struct mm_struct *mm, unsigned long address, pgd_t *pgd, int fla
 	return pte_page(*(pte_t *)pgd) + ((address & ~PGDIR_MASK) >> PAGE_SHIFT);
 }
 
-bool isolate_huge_page(struct page *page, struct list_head *list)
+int isolate_hugetlb(struct page *page, struct list_head *list)
 {
-	bool ret = true;
+	int ret = 0;
 
 	spin_lock(&hugetlb_lock);
 	if (!PageHeadHuge(page) || !page_huge_active(page) ||
 	    !get_page_unless_zero(page)) {
-		ret = false;
+		ret = -EBUSY;
 		goto unlock;
 	}
 	clear_page_huge_active(page);

@@ -142,8 +142,15 @@ int dma_declare_coherent_memory(struct device *dev, phys_addr_t phys_addr,
 
 void dma_release_coherent_memory(struct device *dev)
 {
+<<<<<<< HEAD
 	if (dev)
 		_dma_release_coherent_memory(dev->dma_mem);
+=======
+	if (dev) {
+		_dma_release_coherent_memory(dev->dma_mem);
+		dev->dma_mem = NULL;
+	}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 static void *__dma_alloc_from_coherent(struct device *dev,

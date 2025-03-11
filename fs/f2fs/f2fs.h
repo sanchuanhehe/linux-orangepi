@@ -67,6 +67,11 @@ struct f2fs_fault_info {
 
 extern const char *f2fs_fault_name[FAULT_MAX];
 #define IS_FAULT_SET(fi, type) ((fi)->inject_type & (1 << (type)))
+
+/* maximum retry count for injected failure */
+#define DEFAULT_FAILURE_RETRY_COUNT		8
+#else
+#define DEFAULT_FAILURE_RETRY_COUNT		1
 #endif
 
 #define MIN_ROOT_RESERVED_BLOCKS (128 * 1024 * 1024)
@@ -98,10 +103,14 @@ extern const char *f2fs_fault_name[FAULT_MAX];
 #define F2FS_MOUNT_DISABLE_CHECKPOINT	0x02000000
 #define F2FS_MOUNT_NORECOVERY		0x04000000
 #define F2FS_MOUNT_ATGC			0x08000000
+<<<<<<< HEAD
 #define F2FS_MOUNT_MERGE_CHECKPOINT	0x10000000
 #define	F2FS_MOUNT_GC_MERGE		0x20000000
 #define F2FS_MOUNT_COMPRESS_CACHE	0x40000000
 #define F2FS_MOUNT_AGE_EXTENT_CACHE	0x80000000
+=======
+#define	F2FS_MOUNT_GC_MERGE		0x20000000
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 #define F2FS_OPTION(sbi)	((sbi)->mount_opt)
 #define clear_opt(sbi, option)	(F2FS_OPTION(sbi).opt &= ~F2FS_MOUNT_##option)
@@ -319,11 +328,17 @@ struct discard_entry {
 
 /* default discard granularity of inner discard thread, unit: block count */
 #define DEFAULT_DISCARD_GRANULARITY		16
+#define DISCARD_GRAN_BL		16
+#define DISCARD_GRAN_BG		512
+#define DISCARD_GRAN_FORCE	1
 
 /* max discard pend list number */
 #define MAX_PLIST_NUM		512
 #define plist_idx(blk_num)	((blk_num) >= MAX_PLIST_NUM ?		\
 					(MAX_PLIST_NUM - 1) : ((blk_num) - 1))
+#define FS_FREE_SPACE_PERCENT		20
+#define DEVICE_FREE_SPACE_PERCENT	10
+#define HUNDRED_PERCENT			100
 
 enum {
 	D_PREP,			/* initial */
@@ -362,10 +377,23 @@ struct discard_cmd {
 
 enum {
 	DPOLICY_BG,
+	DPOLICY_BALANCE,
 	DPOLICY_FORCE,
 	DPOLICY_FSTRIM,
 	DPOLICY_UMOUNT,
 	MAX_DPOLICY,
+};
+
+enum {
+	SUB_POLICY_BIG,
+	SUB_POLICY_MID,
+	SUB_POLICY_SMALL,
+	NR_SUB_POLICY,
+};
+
+struct discard_sub_policy {
+	unsigned int max_requests;
+	int interval;
 };
 
 struct discard_policy {
@@ -373,13 +401,13 @@ struct discard_policy {
 	unsigned int min_interval;	/* used for candidates exist */
 	unsigned int mid_interval;	/* used for device busy */
 	unsigned int max_interval;	/* used for candidates not exist */
-	unsigned int max_requests;	/* # of discards issued per round */
 	unsigned int io_aware_gran;	/* minimum granularity discard not be aware of I/O */
 	bool io_aware;			/* issue discard in idle time */
 	bool sync;			/* submit discard with REQ_SYNC flag */
 	bool ordered;			/* issue discard by lba order */
 	bool timeout;			/* discard timeout for put_super */
 	unsigned int granularity;	/* discard granularity */
+	struct discard_sub_policy sub_policy[NR_SUB_POLICY];
 };
 
 struct discard_cmd_control {
@@ -401,6 +429,7 @@ struct discard_cmd_control {
 	atomic_t discard_cmd_cnt;		/* # of cached cmd count */
 	struct rb_root_cached root;		/* root of discard rb-tree */
 	bool rbtree_check;			/* config for consistence check */
+	int discard_type;                       /* discard type */
 };
 
 /* for the list of fsync inodes, used only during recovery */
@@ -1220,7 +1249,6 @@ struct f2fs_dev_info {
 #ifdef CONFIG_BLK_DEV_ZONED
 	unsigned int nr_blkz;		/* Total number of zones */
 	unsigned long *blkz_seq;	/* Bitmap indicating sequential zones */
-	block_t *zone_capacity_blocks;  /* Array of zone capacity in blks */
 #endif
 };
 
@@ -1566,6 +1594,20 @@ struct decompress_io_ctx {
 #define MAX_COMPRESS_LOG_SIZE		8
 #define MAX_COMPRESS_WINDOW_SIZE(log_size)	((PAGE_SIZE) << (log_size))
 
+#ifdef CONFIG_F2FS_GRADING_SSR
+struct f2fs_hot_cold_params {
+	unsigned int enable;
+	unsigned int hot_data_lower_limit;
+	unsigned int hot_data_waterline;
+	unsigned int warm_data_lower_limit;
+	unsigned int warm_data_waterline;
+	unsigned int hot_node_lower_limit;
+	unsigned int hot_node_waterline;
+	unsigned int warm_node_lower_limit;
+	unsigned int warm_node_waterline;
+};
+#endif
+
 struct f2fs_sb_info {
 	struct super_block *sb;			/* pointer to VFS super block */
 	struct proc_dir_entry *s_proc;		/* proc entry */
@@ -1640,6 +1682,7 @@ struct f2fs_sb_info {
 	unsigned int meta_ino_num;		/* meta inode number*/
 	unsigned int log_blocks_per_seg;	/* log2 blocks per segment */
 	unsigned int blocks_per_seg;		/* blocks per segment */
+	unsigned int unusable_blocks_per_sec;	/* unusable blocks per section */
 	unsigned int segs_per_sec;		/* segments per section */
 	unsigned int secs_per_zone;		/* sections per zone */
 	unsigned int total_sections;		/* total section count */
@@ -1798,6 +1841,10 @@ struct f2fs_sb_info {
 	unsigned int compress_percent;		/* cache page percentage */
 	unsigned int compress_watermark;	/* cache page watermark */
 	atomic_t compress_page_hit;		/* cache hit count */
+#endif
+
+#ifdef CONFIG_F2FS_GRADING_SSR
+	struct f2fs_hot_cold_params hot_cold_params;
 #endif
 };
 
@@ -3384,6 +3431,18 @@ static inline void f2fs_update_iostat(struct f2fs_sb_info *sbi,
 	f2fs_record_iostat(sbi);
 }
 
+static inline block_t fs_free_space_threshold(struct f2fs_sb_info *sbi)
+{
+	return (block_t)(SM_I(sbi)->main_segments * sbi->blocks_per_seg *
+		FS_FREE_SPACE_PERCENT) / HUNDRED_PERCENT;
+}
+
+static inline block_t device_free_space_threshold(struct f2fs_sb_info *sbi)
+{
+	return (block_t)(SM_I(sbi)->main_segments * sbi->blocks_per_seg *
+		DEVICE_FREE_SPACE_PERCENT) / HUNDRED_PERCENT;
+}
+
 #define __is_large_section(sbi)		((sbi)->segs_per_sec > 1)
 
 #define __is_meta_io(fio) (PAGE_TYPE_OF_BIO((fio)->type) == META)
@@ -3580,6 +3639,10 @@ void f2fs_destroy_node_manager_caches(void);
 /*
  * segment.c
  */
+unsigned long find_rev_next_bit(const unsigned long *addr,
+		unsigned long size, unsigned long offset);
+unsigned long find_rev_next_zero_bit(const unsigned long *addr,
+		unsigned long size, unsigned long offset);
 bool f2fs_need_SSR(struct f2fs_sb_info *sbi);
 void f2fs_register_inmem_page(struct inode *inode, struct page *page);
 void f2fs_drop_inmem_pages_all(struct f2fs_sb_info *sbi, bool gc_failure);
@@ -3637,7 +3700,7 @@ void f2fs_replace_block(struct f2fs_sb_info *sbi, struct dnode_of_data *dn,
 void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 			block_t old_blkaddr, block_t *new_blkaddr,
 			struct f2fs_summary *sum, int type,
-			struct f2fs_io_info *fio);
+			struct f2fs_io_info *fio, int contig_level);
 void f2fs_wait_on_page_writeback(struct page *page,
 			enum page_type type, bool ordered, bool locked);
 void f2fs_wait_on_block_writeback(struct inode *inode, block_t blkaddr);
@@ -3782,7 +3845,7 @@ block_t f2fs_start_bidx_of_node(unsigned int node_ofs, struct inode *inode);
 int f2fs_gc(struct f2fs_sb_info *sbi, bool sync, bool background, bool force,
 			unsigned int segno);
 void f2fs_build_gc_manager(struct f2fs_sb_info *sbi);
-int f2fs_resize_fs(struct f2fs_sb_info *sbi, __u64 block_count);
+int f2fs_resize_fs(struct file *filp, __u64 block_count);
 int __init f2fs_create_garbage_collection_cache(void);
 void f2fs_destroy_garbage_collection_cache(void);
 

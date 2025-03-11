@@ -2,7 +2,11 @@
 /*
  * Clang Control Flow Integrity (CFI) error and slowpath handling.
  *
+<<<<<<< HEAD
  * Copyright (C) 2019 Google LLC
+=======
+ * Copyright (C) 2021 Google LLC
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
  */
 
 #include <linux/hardirq.h>
@@ -19,11 +23,17 @@
 /* Compiler-defined handler names */
 #ifdef CONFIG_CFI_PERMISSIVE
 #define cfi_failure_handler	__ubsan_handle_cfi_check_fail
+<<<<<<< HEAD
 #define cfi_slowpath_handler	__cfi_slowpath_diag
 #else /* enforcing */
 #define cfi_failure_handler	__ubsan_handle_cfi_check_fail_abort
 #define cfi_slowpath_handler	__cfi_slowpath
 #endif /* CONFIG_CFI_PERMISSIVE */
+=======
+#else
+#define cfi_failure_handler	__ubsan_handle_cfi_check_fail_abort
+#endif
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 static inline void handle_cfi_failure(void *ptr)
 {
@@ -194,8 +204,12 @@ static void update_shadow(struct module *mod, unsigned long base_addr,
 	struct cfi_shadow *next;
 	unsigned long min_addr, max_addr;
 
+<<<<<<< HEAD
 	next = (struct cfi_shadow *)vmalloc(SHADOW_SIZE);
 	WARN_ON(!next);
+=======
+	next = vmalloc(SHADOW_SIZE);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	mutex_lock(&shadow_update_lock);
 	prev = rcu_dereference_protected(cfi_shadow,
@@ -214,7 +228,11 @@ static void update_shadow(struct module *mod, unsigned long base_addr,
 
 	rcu_assign_pointer(cfi_shadow, next);
 	mutex_unlock(&shadow_update_lock);
+<<<<<<< HEAD
 	synchronize_rcu_expedited();
+=======
+	synchronize_rcu();
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	if (prev) {
 		set_memory_rw((unsigned long)prev, SHADOW_PAGES);
@@ -247,7 +265,11 @@ static inline cfi_check_fn ptr_to_check_fn(const struct cfi_shadow __rcu *s,
 	return (cfi_check_fn)shadow_to_check_fn(s, index);
 }
 
+<<<<<<< HEAD
 static inline cfi_check_fn __find_shadow_check_fn(unsigned long ptr)
+=======
+static inline cfi_check_fn find_shadow_check_fn(unsigned long ptr)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	cfi_check_fn fn;
 
@@ -260,14 +282,22 @@ static inline cfi_check_fn __find_shadow_check_fn(unsigned long ptr)
 
 #else /* !CONFIG_CFI_CLANG_SHADOW */
 
+<<<<<<< HEAD
 static inline cfi_check_fn __find_shadow_check_fn(unsigned long ptr)
+=======
+static inline cfi_check_fn find_shadow_check_fn(unsigned long ptr)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	return NULL;
 }
 
 #endif /* CONFIG_CFI_CLANG_SHADOW */
 
+<<<<<<< HEAD
 static inline cfi_check_fn __find_module_check_fn(unsigned long ptr)
+=======
+static inline cfi_check_fn find_module_check_fn(unsigned long ptr)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	cfi_check_fn fn = NULL;
 	struct module *mod;
@@ -283,12 +313,22 @@ static inline cfi_check_fn __find_module_check_fn(unsigned long ptr)
 
 static inline cfi_check_fn find_check_fn(unsigned long ptr)
 {
+<<<<<<< HEAD
 	bool rcu;
 	cfi_check_fn fn = NULL;
+=======
+	cfi_check_fn fn = NULL;
+	unsigned long flags;
+	bool rcu_idle;
+
+	if (is_kernel_text(ptr))
+		return __cfi_check;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	/*
 	 * Indirect call checks can happen when RCU is not watching. Both
 	 * the shadow and __module_address use RCU, so we need to wake it
+<<<<<<< HEAD
 	 * up before proceeding. Use rcu_nmi_enter/exit() as these calls
 	 * can happen anywhere.
 	 */
@@ -323,11 +363,39 @@ void cfi_slowpath_handler(uint64_t id, void *ptr, void *diag)
 	if (!IS_ENABLED(CONFIG_CFI_PERMISSIVE))
 		diag = NULL;
 
+=======
+	 * up if necessary.
+	 */
+	rcu_idle = !rcu_is_watching();
+	if (rcu_idle) {
+		local_irq_save(flags);
+		rcu_irq_enter();
+	}
+
+	if (IS_ENABLED(CONFIG_CFI_CLANG_SHADOW))
+		fn = find_shadow_check_fn(ptr);
+	if (!fn)
+		fn = find_module_check_fn(ptr);
+
+	if (rcu_idle) {
+		rcu_irq_exit();
+		local_irq_restore(flags);
+	}
+
+	return fn;
+}
+
+void __cfi_slowpath_diag(uint64_t id, void *ptr, void *diag)
+{
+	cfi_check_fn fn = find_check_fn((unsigned long)ptr);
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	if (likely(fn))
 		fn(id, ptr, diag);
 	else /* Don't allow unchecked modules */
 		handle_cfi_failure(ptr);
 }
+<<<<<<< HEAD
 
 #else /* !CONFIG_MODULES */
 
@@ -340,13 +408,30 @@ void cfi_slowpath_handler(uint64_t id, void *ptr, void *diag)
 
 EXPORT_SYMBOL(cfi_slowpath_handler);
 
+=======
+EXPORT_SYMBOL(__cfi_slowpath_diag);
+
+#else /* !CONFIG_MODULES */
+
+void __cfi_slowpath_diag(uint64_t id, void *ptr, void *diag)
+{
+	handle_cfi_failure(ptr); /* No modules */
+}
+EXPORT_SYMBOL(__cfi_slowpath_diag);
+
+#endif /* CONFIG_MODULES */
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 void cfi_failure_handler(void *data, void *ptr, void *vtable)
 {
 	handle_cfi_failure(ptr);
 }
 EXPORT_SYMBOL(cfi_failure_handler);
+<<<<<<< HEAD
 
 void __cfi_check_fail(void *data, void *ptr)
 {
 	handle_cfi_failure(ptr);
 }
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release

@@ -82,6 +82,8 @@ Brief summary of control files.
  memory.swappiness		     set/show swappiness parameter of vmscan
 				     (See sysctl's vm.swappiness)
  memory.move_charge_at_immigrate     set/show controls of moving charges
+                                     This knob is deprecated and shouldn't be
+                                     used.
  memory.oom_control		     set/show oom controls.
  memory.numa_stat		     show the number of memory usage per numa
 				     node
@@ -308,9 +310,9 @@ the amount of kernel memory used by the system. Kernel memory is fundamentally
 different than user memory, since it can't be swapped out, which makes it
 possible to DoS the system by consuming too much of this precious resource.
 
-Kernel memory accounting is enabled for all memory cgroups by default. But
-it can be disabled system-wide by passing cgroup.memory=nokmem to the kernel
-at boot time. In this case, kernel memory will not be accounted at all.
+Kernel memory accounting is disabled for all memory cgroups by default. But
+it can be enabled system-wide by passing cgroup.memory=kmem to the kernel
+at boot time. In this case, kernel memory will all be accounted.
 
 Kernel memory limits are not imposed for the root cgroup. Usage for the root
 cgroup may or may not be accounted. The memory used is accumulated into
@@ -740,8 +742,15 @@ NOTE2:
        It is recommended to set the soft limit always below the hard limit,
        otherwise the hard limit will take precedence.
 
-8. Move charges at task migration
-=================================
+8. Move charges at task migration (DEPRECATED!)
+===============================================
+
+THIS IS DEPRECATED!
+
+It's expensive and unreliable! It's better practice to launch workload
+tasks directly from inside their target cgroup. Use dedicated workload
+cgroups to allow fine-grained policy adjustments without having to
+move physical pages between control domains.
 
 Users can move charges associated with a task along with task migration, that
 is, uncharge task's pages from the old cgroup and charge them to the new cgroup.

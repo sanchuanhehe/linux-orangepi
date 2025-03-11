@@ -141,6 +141,9 @@
 #include <linux/mroute.h>
 #include <linux/netlink.h>
 #include <net/dst_metadata.h>
+#ifdef CONFIG_LOWPOWER_PROTOCOL
+#include <net/lowpower_protocol.h>
+#endif /* CONFIG_LOWPOWER_PROTOCOL */
 
 /*
  *	Process Router Attention IP option (RFC 2113)
@@ -243,11 +246,19 @@ int ip_local_deliver(struct sk_buff *skb)
 	 *	Reassemble IP fragments.
 	 */
 	struct net *net = dev_net(skb->dev);
+#ifdef CONFIG_LOWPOWER_PROTOCOL
+	int ret;
+#endif /* CONFIG_LOWPOWER_PROTOCOL */
 
 	if (ip_is_fragment(ip_hdr(skb))) {
 		if (ip_defrag(net, skb, IP_DEFRAG_LOCAL_DELIVER))
 			return 0;
 	}
+
+#ifdef CONFIG_LOWPOWER_PROTOCOL
+	if (netfilter_bypass_enable(net, skb, ip_local_deliver_finish, &ret))
+		return ret;
+#endif /* CONFIG_LOWPOWER_PROTOCOL */
 
 	return NF_HOOK(NFPROTO_IPV4, NF_INET_LOCAL_IN,
 		       net, NULL, skb, skb->dev, NULL,
@@ -361,6 +372,11 @@ static int ip_rcv_finish_core(struct net *net, struct sock *sk,
 					   iph->tos, dev);
 		if (unlikely(err))
 			goto drop_error;
+	} else {
+		struct in_device *in_dev = __in_dev_get_rcu(dev);
+
+		if (in_dev && IN_DEV_ORCONF(in_dev, NOPOLICY))
+			IPCB(skb)->flags |= IPSKB_NOPOLICY;
 	}
 
 #ifdef CONFIG_IP_ROUTE_CLASSID
@@ -561,7 +577,8 @@ static void ip_sublist_rcv_finish(struct list_head *head)
 static struct sk_buff *ip_extract_route_hint(const struct net *net,
 					     struct sk_buff *skb, int rt_type)
 {
-	if (fib4_has_custom_rules(net) || rt_type == RTN_BROADCAST)
+	if (fib4_has_custom_rules(net) || rt_type == RTN_BROADCAST ||
+	    IPCB(skb)->flags & IPSKB_MULTIPATH)
 		return NULL;
 
 	return skb;

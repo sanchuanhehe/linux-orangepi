@@ -802,7 +802,11 @@ xfs_ialloc(
 	xfs_buf_t	**ialloc_context,
 	xfs_inode_t	**ipp)
 {
+<<<<<<< HEAD
 	struct inode	*dir = pip ? VFS_I(pip) : NULL;
+=======
+	struct inode *dir = pip ? VFS_I(pip) : NULL;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	struct xfs_mount *mp = tp->t_mountp;
 	xfs_ino_t	ino;
 	xfs_inode_t	*ip;
@@ -853,7 +857,11 @@ xfs_ialloc(
 	ip->i_d.di_projid = prid;
 
 	if (dir && !(dir->i_mode & S_ISGID) &&
+<<<<<<< HEAD
 	    (mp->m_flags & XFS_MOUNT_GRPID)) {
+=======
+			(mp->m_flags & XFS_MOUNT_GRPID)) {
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		inode->i_uid = current_fsuid();
 		inode->i_gid = dir->i_gid;
 		inode->i_mode = mode;

@@ -553,6 +553,10 @@ extern int nfs_wb_page_cancel(struct inode *inode, struct page* page);
 extern int  nfs_commit_inode(struct inode *, int);
 extern struct nfs_commit_data *nfs_commitdata_alloc(void);
 extern void nfs_commit_free(struct nfs_commit_data *data);
+<<<<<<< HEAD
+=======
+void nfs_commit_begin(struct nfs_mds_commit_info *cinfo);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 bool nfs_commit_end(struct nfs_mds_commit_info *cinfo);
 
 static inline int

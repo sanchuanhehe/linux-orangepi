@@ -139,8 +139,21 @@ enum pageflags {
 #ifdef CONFIG_64BIT
 	PG_arch_2,
 #endif
+<<<<<<< HEAD
 #ifdef CONFIG_KASAN_HW_TAGS
 	PG_skip_kasan_poison,
+=======
+#ifdef CONFIG_PAGE_TRACING
+	PG_skb,
+	PG_zspage,
+#endif
+#ifdef CONFIG_MEM_PURGEABLE
+	PG_purgeable,
+#endif
+#ifdef CONFIG_SECURITY_XPM
+	PG_xpm_readonly,
+	PG_xpm_writetainted,
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #endif
 	__NR_PAGEFLAGS,
 
@@ -346,6 +359,14 @@ __PAGEFLAG(Slab, slab, PF_NO_TAIL)
 __PAGEFLAG(SlobFree, slob_free, PF_NO_TAIL)
 PAGEFLAG(Checked, checked, PF_NO_COMPOUND)	   /* Used by some filesystems */
 
+#ifdef CONFIG_SECURITY_XPM
+PAGEFLAG(XPMReadonly, xpm_readonly, PF_HEAD)
+PAGEFLAG(XPMWritetainted, xpm_writetainted, PF_HEAD)
+#else
+PAGEFLAG_FALSE(XPMReadonly)
+PAGEFLAG_FALSE(XPMWritetainted)
+#endif
+
 /* Xen */
 PAGEFLAG(Pinned, pinned, PF_NO_COMPOUND)
 	TESTSCFLAG(Pinned, pinned, PF_NO_COMPOUND)
@@ -447,10 +468,16 @@ TESTCLEARFLAG(Young, young, PF_ANY)
 PAGEFLAG(Idle, idle, PF_ANY)
 #endif
 
+<<<<<<< HEAD
 #ifdef CONFIG_KASAN_HW_TAGS
 PAGEFLAG(SkipKASanPoison, skip_kasan_poison, PF_HEAD)
 #else
 PAGEFLAG_FALSE(SkipKASanPoison)
+=======
+#ifdef CONFIG_PAGE_TRACING
+	PAGEFLAG(SKB, skb, PF_ANY)
+	PAGEFLAG(Zspage, zspage, PF_ANY)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #endif
 
 /*
@@ -461,6 +488,11 @@ PAGEFLAG_FALSE(SkipKASanPoison)
  */
 __PAGEFLAG(Reported, reported, PF_NO_COMPOUND)
 
+#ifdef CONFIG_MEM_PURGEABLE
+PAGEFLAG(Purgeable, purgeable, PF_ANY)
+#else
+PAGEFLAG_FALSE(Purgeable)
+#endif
 /*
  * On an anonymous page mapped into a user virtual memory area,
  * page->mapping points to its anon_vma, not to a struct address_space;
@@ -835,11 +867,18 @@ static inline void ClearPageSlabPfmemalloc(struct page *page)
  * Flags checked when a page is freed.  Pages being freed should not have
  * these flags set.  It they are, there is a problem.
  */
+#ifdef CONFIG_SECURITY_XPM
+#define	__XPM_PAGE_FLAGS (1UL << PG_xpm_readonly | 1UL << PG_xpm_writetainted)
+#else
+#define	__XPM_PAGE_FLAGS 0
+#endif
+
 #define PAGE_FLAGS_CHECK_AT_FREE				\
 	(1UL << PG_lru		| 1UL << PG_locked	|	\
 	 1UL << PG_private	| 1UL << PG_private_2	|	\
 	 1UL << PG_writeback	| 1UL << PG_reserved	|	\
 	 1UL << PG_slab		| 1UL << PG_active 	|	\
+	 __XPM_PAGE_FLAGS | \
 	 1UL << PG_unevictable	| __PG_MLOCKED)
 
 /*

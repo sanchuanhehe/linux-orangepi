@@ -9,7 +9,11 @@
 
 extern const struct option check_options[];
 extern bool no_fp, no_unreachable, retpoline, module, backtrace, uaccess, stats,
+<<<<<<< HEAD
             validate_dup, vmlinux, mcount, noinstr, sls, unret, rethunk;
+=======
+            validate_dup, vmlinux, sls, unret, rethunk;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 extern int cmd_check(int argc, const char **argv);
 extern int cmd_orc(int argc, const char **argv);

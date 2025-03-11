@@ -1005,6 +1005,8 @@ struct dentry *ovl_lookup(struct inode *dir, struct dentry *dentry,
 	 * Just make sure a corresponding data dentry has been found.
 	 */
 	if (d.metacopy || (uppermetacopy && !ctr)) {
+		pr_warn_ratelimited("metacopy with no lower data found - abort lookup (%pd2)\n",
+				    dentry);
 		err = -EIO;
 		goto out_put;
 	} else if (!d.is_dir && upperdentry && !ctr && origin_path) {
@@ -1096,8 +1098,7 @@ struct dentry *ovl_lookup(struct inode *dir, struct dentry *dentry,
 			ovl_set_flag(OVL_UPPERDATA, inode);
 	}
 
-	ovl_dentry_update_reval(dentry, upperdentry,
-			DCACHE_OP_REVALIDATE | DCACHE_OP_WEAK_REVALIDATE);
+	ovl_dentry_init_reval(dentry, upperdentry);
 
 	ovl_revert_creds(dentry->d_sb, old_cred);
 	if (origin_path) {

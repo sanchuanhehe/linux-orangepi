@@ -45,7 +45,16 @@ enum migratetype {
 	MIGRATE_UNMOVABLE,
 	MIGRATE_MOVABLE,
 	MIGRATE_RECLAIMABLE,
+<<<<<<< HEAD
 #ifdef CONFIG_CMA
+=======
+#ifdef CONFIG_CMA_REUSE
+	MIGRATE_CMA,
+#endif
+	MIGRATE_PCPTYPES,	/* the number of types on the pcp lists */
+	MIGRATE_HIGHATOMIC = MIGRATE_PCPTYPES,
+#if defined(CONFIG_CMA) && !defined(CONFIG_CMA_REUSE)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	/*
 	 * MIGRATE_CMA migration type is designed to mimic the way
 	 * ZONE_MOVABLE works.  Only movable pages can be allocated
@@ -80,6 +89,12 @@ extern const char * const migratetype_names[MIGRATE_TYPES];
 #  define is_migrate_cma(migratetype) false
 #  define is_migrate_cma_page(_page) false
 #  define get_cma_migrate_type() MIGRATE_MOVABLE
+#endif
+
+#ifdef CONFIG_CMA_REUSE
+#  define get_cma_migratetype() MIGRATE_CMA
+#else
+#  define get_cma_migratetype() MIGRATE_MOVABLE
 #endif
 
 static inline bool is_migrate_movable(int mt)
@@ -154,6 +169,10 @@ enum zone_stat_item {
 	NR_ZONE_ACTIVE_ANON,
 	NR_ZONE_INACTIVE_FILE,
 	NR_ZONE_ACTIVE_FILE,
+#ifdef CONFIG_MEM_PURGEABLE
+	NR_ZONE_INACTIVE_PURGEABLE,
+	NR_ZONE_ACTIVE_PURGEABLE,
+#endif
 	NR_ZONE_UNEVICTABLE,
 	NR_ZONE_WRITE_PENDING,	/* Count of dirty, writeback and unstable pages */
 	NR_MLOCK,		/* mlock()ed pages found and moved off LRU */
@@ -162,6 +181,9 @@ enum zone_stat_item {
 	NR_BOUNCE,
 	NR_ZSPAGES,		/* allocated in zsmalloc */
 	NR_FREE_CMA_PAGES,
+#ifdef CONFIG_PAGE_TRACING
+	NR_SKB_PAGES,
+#endif
 	NR_VM_ZONE_STAT_ITEMS };
 
 enum node_stat_item {
@@ -170,6 +192,10 @@ enum node_stat_item {
 	NR_ACTIVE_ANON,		/*  "     "     "   "       "         */
 	NR_INACTIVE_FILE,	/*  "     "     "   "       "         */
 	NR_ACTIVE_FILE,		/*  "     "     "   "       "         */
+#ifdef CONFIG_MEM_PURGEABLE
+	NR_INACTIVE_PURGEABLE,
+	NR_ACTIVE_PURGEABLE,
+#endif
 	NR_UNEVICTABLE,		/*  "     "     "   "       "         */
 	NR_SLAB_RECLAIMABLE_B,
 	NR_SLAB_UNRECLAIMABLE_B,
@@ -245,19 +271,26 @@ static __always_inline bool vmstat_item_in_bytes(int idx)
 #define LRU_BASE 0
 #define LRU_ACTIVE 1
 #define LRU_FILE 2
+#ifdef CONFIG_MEM_PURGEABLE
+#define LRU_PURGEABLE 4
+#endif
 
 enum lru_list {
 	LRU_INACTIVE_ANON = LRU_BASE,
 	LRU_ACTIVE_ANON = LRU_BASE + LRU_ACTIVE,
 	LRU_INACTIVE_FILE = LRU_BASE + LRU_FILE,
 	LRU_ACTIVE_FILE = LRU_BASE + LRU_FILE + LRU_ACTIVE,
+#ifdef CONFIG_MEM_PURGEABLE
+	LRU_INACTIVE_PURGEABLE = LRU_BASE + LRU_PURGEABLE,
+	LRU_ACTIVE_PURGEABLE = LRU_BASE + LRU_PURGEABLE + LRU_ACTIVE,
+#endif
 	LRU_UNEVICTABLE,
 	NR_LRU_LISTS
 };
 
 #define for_each_lru(lru) for (lru = 0; lru < NR_LRU_LISTS; lru++)
 
-#define for_each_evictable_lru(lru) for (lru = 0; lru <= LRU_ACTIVE_FILE; lru++)
+#define for_each_evictable_lru(lru) for (lru = 0; lru < LRU_UNEVICTABLE; lru++)
 
 static inline bool is_file_lru(enum lru_list lru)
 {
@@ -266,6 +299,10 @@ static inline bool is_file_lru(enum lru_list lru)
 
 static inline bool is_active_lru(enum lru_list lru)
 {
+#ifdef CONFIG_MEM_PURGEABLE
+	if (lru == LRU_ACTIVE_PURGEABLE)
+		return true;
+#endif
 	return (lru == LRU_ACTIVE_ANON || lru == LRU_ACTIVE_FILE);
 }
 
@@ -778,7 +815,16 @@ typedef struct pglist_data {
 
 	int kswapd_failures;		/* Number of 'reclaimed == 0' runs */
 
+<<<<<<< HEAD
 	ANDROID_OEM_DATA(1);
+=======
+#ifdef CONFIG_HYPERHOLD_ZSWAPD
+	wait_queue_head_t zswapd_wait;
+	atomic_t zswapd_wait_flag;
+	struct task_struct *zswapd;
+#endif
+
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #ifdef CONFIG_COMPACTION
 	int kcompactd_max_order;
 	enum zone_type kcompactd_highest_zoneidx;
@@ -846,6 +892,11 @@ typedef struct pglist_data {
 #define node_start_pfn(nid)	(NODE_DATA(nid)->node_start_pfn)
 #define node_end_pfn(nid) pgdat_end_pfn(NODE_DATA(nid))
 
+static inline struct lruvec *node_lruvec(struct pglist_data *pgdat)
+{
+	return &pgdat->__lruvec;
+}
+
 static inline unsigned long pgdat_end_pfn(pg_data_t *pgdat)
 {
 	return pgdat->node_start_pfn + pgdat->node_spanned_pages;
@@ -891,6 +942,13 @@ static inline struct pglist_data *lruvec_pgdat(struct lruvec *lruvec)
 	return container_of(lruvec, struct pglist_data, __lruvec);
 #endif
 }
+
+#ifdef CONFIG_HYPERHOLD_FILE_LRU
+static inline int is_node_lruvec(struct lruvec *lruvec)
+{
+	return &lruvec_pgdat(lruvec)->__lruvec == lruvec;
+}
+#endif
 
 extern unsigned long lruvec_lru_size(struct lruvec *lruvec, enum lru_list lru, int zone_idx);
 

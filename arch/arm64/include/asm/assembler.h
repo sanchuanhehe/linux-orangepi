@@ -15,7 +15,10 @@
 #include <asm-generic/export.h>
 
 #include <asm/asm-offsets.h>
+<<<<<<< HEAD
 #include <asm/asm-bug.h>
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #include <asm/alternative.h>
 #include <asm/cpufeature.h>
 #include <asm/cputype.h>
@@ -704,6 +707,7 @@ USER(\label, ic	ivau, \tmp2)			// invalidate I line PoU
 	.endif
 	.endm
 
+<<<<<<< HEAD
 /*
  * Set SCTLR_ELx to the @reg value, and invalidate the local icache
  * in the process. This is called when setting the MMU on.
@@ -729,6 +733,8 @@ USER(\label, ic	ivau, \tmp2)			// invalidate I line PoU
 	set_sctlr sctlr_el2, \reg
 .endm
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	/*
 	 * Check whether preempt/bh-disabled asm code should yield as soon as
 	 * it is able. This is the case if we are currently running in task
@@ -821,6 +827,7 @@ alternative_cb_end
 #endif /* CONFIG_MITIGATE_SPECTRE_BRANCH_HISTORY */
 	.endm
 
+<<<<<<< HEAD
 	.macro mitigate_spectre_bhb_loop	tmp
 #ifdef CONFIG_MITIGATE_SPECTRE_BRANCH_HISTORY
 alternative_cb	spectre_bhb_patch_loop_mitigation_enable
@@ -831,6 +838,8 @@ alternative_cb_end
 #endif /* CONFIG_MITIGATE_SPECTRE_BRANCH_HISTORY */
 	.endm
 
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	/* Save/restores x0-x3 to the stack */
 	.macro __mitigate_spectre_bhb_fw
 #ifdef CONFIG_MITIGATE_SPECTRE_BRANCH_HISTORY
@@ -844,6 +853,7 @@ alternative_cb_end
 	ldp	x0, x1, [sp], #16
 #endif /* CONFIG_MITIGATE_SPECTRE_BRANCH_HISTORY */
 	.endm
+<<<<<<< HEAD
 
 	.macro mitigate_spectre_bhb_clear_insn
 #ifdef CONFIG_MITIGATE_SPECTRE_BRANCH_HISTORY
@@ -854,4 +864,6 @@ alternative_cb	spectre_bhb_patch_clearbhb
 alternative_cb_end
 #endif /* CONFIG_MITIGATE_SPECTRE_BRANCH_HISTORY */
 	.endm
+=======
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #endif	/* __ASM_ASSEMBLER_H */

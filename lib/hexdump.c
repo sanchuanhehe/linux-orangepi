@@ -43,6 +43,7 @@ EXPORT_SYMBOL(hex_asc_upper);
  *	uppercase and lowercase letters, so we use (ch & 0xdf), which converts
  *	lowercase to uppercase
  */
+<<<<<<< HEAD
 /*
  * perserve abi due to 15b78a8e38e8 ("hex2bin: make the function hex_to_bin
  * constant-time"
@@ -52,6 +53,9 @@ int hex_to_bin(char ch)
 #else
 int hex_to_bin(unsigned char ch)
 #endif
+=======
+int hex_to_bin(unsigned char ch)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 {
 	unsigned char cu = ch & 0xdf;
 	return -1 +

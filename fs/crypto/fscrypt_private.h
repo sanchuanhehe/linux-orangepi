@@ -222,6 +222,7 @@ struct fscrypt_info {
 	 * will be NULL if the master key was found in a process-subscribed
 	 * keyring rather than in the filesystem-level keyring.
 	 */
+<<<<<<< HEAD
 #ifdef __GENKSYMS__
 	/*
 	 * Android ABI CRC preservation due to commit 391cceee6d43 ("fscrypt:
@@ -232,6 +233,9 @@ struct fscrypt_info {
 #else
 	struct fscrypt_master_key *ci_master_key;
 #endif
+=======
+	struct fscrypt_master_key *ci_master_key;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	/*
 	 * Link in list of inodes that were unlocked with the master key.

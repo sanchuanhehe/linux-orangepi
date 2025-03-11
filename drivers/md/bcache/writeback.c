@@ -833,6 +833,19 @@ static int bch_root_node_dirty_init(struct cache_set *c,
 			   0);
 	if (ret < 0)
 		pr_warn("sectors dirty init failed, ret=%d!\n", ret);
+<<<<<<< HEAD
+=======
+
+	/*
+	 * The op may be added to cache_set's btree_cache_wait
+	 * in mca_cannibalize(), must ensure it is removed from
+	 * the list and release btree_cache_alloc_lock before
+	 * free op memory.
+	 * Otherwise, the btree_cache_wait will be damaged.
+	 */
+	bch_cannibalize_unlock(c);
+	finish_wait(&c->btree_cache_wait, &(&op.op)->wait);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	return ret;
 }
@@ -847,7 +860,7 @@ static int bch_dirty_init_thread(void *arg)
 	int cur_idx, prev_idx, skip_nr;
 
 	k = p = NULL;
-	cur_idx = prev_idx = 0;
+	prev_idx = 0;
 
 	bch_btree_iter_init(&c->root->keys, &iter, NULL);
 	k = bch_btree_iter_next_filter(&iter, &c->root->keys, bch_ptr_bad);
@@ -911,11 +924,23 @@ static int bch_btre_dirty_init_thread_nr(void)
 void bch_sectors_dirty_init(struct bcache_device *d)
 {
 	int i;
+	struct btree *b = NULL;
 	struct bkey *k = NULL;
 	struct btree_iter iter;
 	struct sectors_dirty_init op;
 	struct cache_set *c = d->c;
 	struct bch_dirty_init_state state;
+<<<<<<< HEAD
+=======
+
+retry_lock:
+	b = c->root;
+	rw_lock(0, b, b->level);
+	if (b != c->root) {
+		rw_unlock(0, b);
+		goto retry_lock;
+	}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	/* Just count root keys if no leaf node */
 	rw_lock(0, c->root, c->root->level);
@@ -925,10 +950,18 @@ void bch_sectors_dirty_init(struct bcache_device *d)
 		op.count = 0;
 
 		for_each_key_filter(&c->root->keys,
-				    k, &iter, bch_ptr_invalid)
+				    k, &iter, bch_ptr_invalid) {
+			if (KEY_INODE(k) != op.inode)
+				continue;
 			sectors_dirty_init_fn(&op.op, c->root, k);
+<<<<<<< HEAD
 
 		rw_unlock(0, c->root);
+=======
+		}
+
+		rw_unlock(0, b);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		return;
 	}
 
@@ -948,12 +981,17 @@ void bch_sectors_dirty_init(struct bcache_device *d)
 		if (atomic_read(&state.enough))
 			break;
 
+<<<<<<< HEAD
+=======
+		atomic_inc(&state.started);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		state.infos[i].state = &state;
 		state.infos[i].thread =
 			kthread_run(bch_dirty_init_thread, &state.infos[i],
 				    "bch_dirtcnt[%d]", i);
 		if (IS_ERR(state.infos[i].thread)) {
 			pr_err("fails to run thread bch_dirty_init[%d]\n", i);
+			atomic_dec(&state.started);
 			for (--i; i >= 0; i--)
 				kthread_stop(state.infos[i].thread);
 			goto out;
@@ -964,7 +1002,11 @@ void bch_sectors_dirty_init(struct bcache_device *d)
 out:
 	/* Must wait for all threads to stop. */
 	wait_event(state.wait, atomic_read(&state.started) == 0);
+<<<<<<< HEAD
 	rw_unlock(0, c->root);
+=======
+	rw_unlock(0, b);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 }
 
 void bch_cached_dev_writeback_init(struct cached_dev *dc)

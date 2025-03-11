@@ -4,7 +4,8 @@
  * Copyright (C) 2017 SiFive
  */
 
-#define LOAD_OFFSET PAGE_OFFSET
+#include <asm/pgtable.h>
+#define LOAD_OFFSET KERNEL_LINK_ADDR
 #include <asm/vmlinux.lds.h>
 #include <asm/page.h>
 #include <asm/cache.h>
@@ -29,32 +30,6 @@ SECTIONS
 	HEAD_TEXT_SECTION
 	. = ALIGN(PAGE_SIZE);
 
-	__init_begin = .;
-	INIT_TEXT_SECTION(PAGE_SIZE)
-	. = ALIGN(8);
-	__soc_early_init_table : {
-		__soc_early_init_table_start = .;
-		KEEP(*(__soc_early_init_table))
-		__soc_early_init_table_end = .;
-	}
-	__soc_builtin_dtb_table : {
-		__soc_builtin_dtb_table_start = .;
-		KEEP(*(__soc_builtin_dtb_table))
-		__soc_builtin_dtb_table_end = .;
-	}
-	/* we have to discard exit text and such at runtime, not link time */
-	.exit.text :
-	{
-		EXIT_TEXT
-	}
-	.exit.data :
-	{
-		EXIT_DATA
-	}
-	PERCPU_SECTION(L1_CACHE_BYTES)
-	__init_end = .;
-
-	. = ALIGN(SECTION_ALIGN);
 	.text : {
 		_text = .;
 		_stext = .;
@@ -70,12 +45,51 @@ SECTIONS
 		_etext = .;
 	}
 
+	. = ALIGN(SECTION_ALIGN);
+	__init_begin = .;
+	__init_text_begin = .;
+	.init.text : AT(ADDR(.init.text) - LOAD_OFFSET) ALIGN(SECTION_ALIGN) { \
+		_sinittext = .;						\
+		INIT_TEXT						\
+		_einittext = .;						\
+	}
+
+	. = ALIGN(8);
+	__soc_early_init_table : {
+		__soc_early_init_table_start = .;
+		KEEP(*(__soc_early_init_table))
+		__soc_early_init_table_end = .;
+	}
+	__soc_builtin_dtb_table : {
+		__soc_builtin_dtb_table_start = .;
+		KEEP(*(__soc_builtin_dtb_table))
+		__soc_builtin_dtb_table_end = .;
+	}
+	/* we have to discard exit text and such at runtime, not link time */
+	__exittext_begin = .;
+	.exit.text :
+	{
+		EXIT_TEXT
+	}
+	__exittext_end = .;
+
+	__init_text_end = .;
+	. = ALIGN(SECTION_ALIGN);
 #ifdef CONFIG_EFI
 	. = ALIGN(PECOFF_SECTION_ALIGNMENT);
 	__pecoff_text_end = .;
 #endif
-
+	/* Start of init data section */
+	__init_data_begin = .;
 	INIT_DATA_SECTION(16)
+	.exit.data :
+	{
+		EXIT_DATA
+	}
+	PERCPU_SECTION(L1_CACHE_BYTES)
+
+	__init_data_end = .;
+	__init_end = .;
 
 	/* Start of data section */
 	_sdata = .;

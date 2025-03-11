@@ -86,17 +86,23 @@ reset:
 static int bpf_test_run(struct bpf_prog *prog, void *ctx, u32 repeat,
 			u32 *retval, u32 *time, bool xdp)
 {
+<<<<<<< HEAD
 	struct bpf_cgroup_storage *storage[MAX_BPF_CGROUP_STORAGE_TYPE] = { NULL };
 	struct bpf_test_timer t = { NO_MIGRATE };
+=======
+	struct bpf_prog_array_item item = {.prog = prog};
+	struct bpf_run_ctx *old_ctx;
+	struct bpf_cg_run_ctx run_ctx;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 	enum bpf_cgroup_storage_type stype;
 	int ret;
 
 	for_each_cgroup_storage_type(stype) {
-		storage[stype] = bpf_cgroup_storage_alloc(prog, stype);
-		if (IS_ERR(storage[stype])) {
-			storage[stype] = NULL;
+		item.cgroup_storage[stype] = bpf_cgroup_storage_alloc(prog, stype);
+		if (IS_ERR(item.cgroup_storage[stype])) {
+			item.cgroup_storage[stype] = NULL;
 			for_each_cgroup_storage_type(stype)
-				bpf_cgroup_storage_free(storage[stype]);
+				bpf_cgroup_storage_free(item.cgroup_storage[stype]);
 			return -ENOMEM;
 		}
 	}
@@ -104,24 +110,60 @@ static int bpf_test_run(struct bpf_prog *prog, void *ctx, u32 repeat,
 	if (!repeat)
 		repeat = 1;
 
+<<<<<<< HEAD
 	bpf_test_timer_enter(&t);
 	do {
 		ret = bpf_cgroup_storage_set(storage);
 		if (ret)
 			break;
+=======
+	rcu_read_lock();
+	migrate_disable();
+	time_start = ktime_get_ns();
+	old_ctx = bpf_set_run_ctx(&run_ctx.run_ctx);
+	for (i = 0; i < repeat; i++) {
+		run_ctx.prog_item = &item;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 		if (xdp)
 			*retval = bpf_prog_run_xdp(prog, ctx);
 		else
 			*retval = BPF_PROG_RUN(prog, ctx);
 
+<<<<<<< HEAD
 		bpf_cgroup_storage_unset();
 
 	} while (bpf_test_timer_continue(&t, repeat, &ret, time));
 	bpf_test_timer_leave(&t);
+=======
+		if (signal_pending(current)) {
+			ret = -EINTR;
+			break;
+		}
+
+		if (need_resched()) {
+			time_spent += ktime_get_ns() - time_start;
+			migrate_enable();
+			rcu_read_unlock();
+
+			cond_resched();
+
+			rcu_read_lock();
+			migrate_disable();
+			time_start = ktime_get_ns();
+		}
+	}
+	bpf_reset_run_ctx(old_ctx);
+	time_spent += ktime_get_ns() - time_start;
+	migrate_enable();
+	rcu_read_unlock();
+
+	do_div(time_spent, repeat);
+	*time = time_spent > U32_MAX ? U32_MAX : (u32)time_spent;
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	for_each_cgroup_storage_type(stype)
-		bpf_cgroup_storage_free(storage[stype]);
+		bpf_cgroup_storage_free(item.cgroup_storage[stype]);
 
 	return ret;
 }

@@ -34,14 +34,19 @@
 #include <linux/rseq.h>
 #include <linux/seqlock.h>
 #include <linux/kcsan.h>
+<<<<<<< HEAD
 #include <linux/android_vendor.h>
 #include <linux/android_kabi.h>
+=======
+#include <linux/sched/rtg.h>
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 /* task_struct member predeclarations (sorted alphabetically): */
 struct audit_context;
 struct backing_dev_info;
 struct bio_list;
 struct blk_plug;
+struct bpf_run_ctx;
 struct capture_control;
 struct cfs_rq;
 struct fs_struct;
@@ -54,6 +59,9 @@ struct perf_event_context;
 struct pid_namespace;
 struct pipe_inode_info;
 struct rcu_node;
+#ifdef CONFIG_RECLAIM_ACCT
+struct reclaim_acct;
+#endif
 struct reclaim_state;
 struct robust_list_head;
 struct root_domain;
@@ -213,6 +221,56 @@ struct io_uring_task;
 
 /* Task command name length: */
 #define TASK_COMM_LEN			16
+
+enum task_event {
+	PUT_PREV_TASK   = 0,
+	PICK_NEXT_TASK  = 1,
+	TASK_WAKE       = 2,
+	TASK_MIGRATE    = 3,
+	TASK_UPDATE     = 4,
+	IRQ_UPDATE      = 5,
+};
+
+/* Note: this need to be in sync with migrate_type_names array */
+enum migrate_types {
+	GROUP_TO_RQ,
+	RQ_TO_GROUP,
+};
+
+#ifdef CONFIG_CPU_ISOLATION_OPT
+extern int sched_isolate_count(const cpumask_t *mask, bool include_offline);
+extern int sched_isolate_cpu(int cpu);
+extern int sched_unisolate_cpu(int cpu);
+extern int sched_unisolate_cpu_unlocked(int cpu);
+#else
+static inline int sched_isolate_count(const cpumask_t *mask,
+				      bool include_offline)
+{
+	cpumask_t count_mask;
+
+	if (include_offline)
+		cpumask_andnot(&count_mask, mask, cpu_online_mask);
+	else
+		return 0;
+
+	return cpumask_weight(&count_mask);
+}
+
+static inline int sched_isolate_cpu(int cpu)
+{
+	return 0;
+}
+
+static inline int sched_unisolate_cpu(int cpu)
+{
+	return 0;
+}
+
+static inline int sched_unisolate_cpu_unlocked(int cpu)
+{
+	return 0;
+}
+#endif
 
 extern void scheduler_tick(void);
 
@@ -485,6 +543,10 @@ struct sched_entity {
 	unsigned long			runnable_weight;
 #endif
 
+#ifdef CONFIG_SCHED_LATENCY_NICE
+	int				latency_weight;
+#endif
+
 #ifdef CONFIG_SMP
 	/*
 	 * Per entity load average tracking.
@@ -500,6 +562,53 @@ struct sched_entity {
 	ANDROID_KABI_RESERVE(3);
 	ANDROID_KABI_RESERVE(4);
 };
+
+#ifdef CONFIG_SCHED_WALT
+extern void sched_exit(struct task_struct *p);
+extern int sched_set_init_task_load(struct task_struct *p, int init_load_pct);
+extern u32 sched_get_init_task_load(struct task_struct *p);
+extern void free_task_load_ptrs(struct task_struct *p);
+#define RAVG_HIST_SIZE_MAX  5
+struct ravg {
+	/*
+	 * 'mark_start' marks the beginning of an event (task waking up, task
+	 * starting to execute, task being preempted) within a window
+	 *
+	 * 'sum' represents how runnable a task has been within current
+	 * window. It incorporates both running time and wait time and is
+	 * frequency scaled.
+	 *
+	 * 'sum_history' keeps track of history of 'sum' seen over previous
+	 * RAVG_HIST_SIZE windows. Windows where task was entirely sleeping are
+	 * ignored.
+	 *
+	 * 'demand' represents maximum sum seen over previous
+	 * sysctl_sched_ravg_hist_size windows. 'demand' could drive frequency
+	 * demand for tasks.
+	 *
+	 * 'curr_window_cpu' represents task's contribution to cpu busy time on
+	 * various CPUs in the current window
+	 *
+	 * 'prev_window_cpu' represents task's contribution to cpu busy time on
+	 * various CPUs in the previous window
+	 *
+	 * 'curr_window' represents the sum of all entries in curr_window_cpu
+	 *
+	 * 'prev_window' represents the sum of all entries in prev_window_cpu
+	 *
+	 */
+	u64 mark_start;
+	u32 sum, demand;
+	u32 sum_history[RAVG_HIST_SIZE_MAX];
+	u32 *curr_window_cpu, *prev_window_cpu;
+	u32 curr_window, prev_window;
+	u16 active_windows;
+	u16 demand_scaled;
+};
+#else
+static inline void sched_exit(struct task_struct *p) { }
+static inline void free_task_load_ptrs(struct task_struct *p) { }
+#endif /* CONFIG_SCHED_WALT */
 
 struct sched_rt_entity {
 	struct list_head		run_list;
@@ -653,6 +762,20 @@ struct wake_q_node {
 	struct wake_q_node *next;
 };
 
+#ifdef CONFIG_QOS_CTRL
+struct qos_task_struct {
+	/*
+	 * 'in_qos' marks the qos level o current task, greater value for
+	 * greater qos, range from (NO_QOS, NR_QOS)
+	 *
+	 *
+	 * 'qos_list' use to track task with qos supply in auth_struct
+	 */
+	int                 in_qos;
+	struct list_head    qos_list;
+};
+#endif
+
 struct task_struct {
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	/*
@@ -703,10 +826,29 @@ struct task_struct {
 	int				static_prio;
 	int				normal_prio;
 	unsigned int			rt_priority;
+#ifdef CONFIG_SCHED_LATENCY_NICE
+	int				latency_prio;
+#endif
 
 	const struct sched_class	*sched_class;
 	struct sched_entity		se;
 	struct sched_rt_entity		rt;
+#ifdef CONFIG_SCHED_WALT
+	struct ravg ravg;
+	/*
+	 * 'init_load_pct' represents the initial task load assigned to children
+	 * of this task
+	 */
+	u32 init_load_pct;
+	u64 last_sleep_ts;
+#endif
+
+#ifdef CONFIG_SCHED_RTG
+	int rtg_depth;
+	struct related_thread_group	*grp;
+	struct list_head		grp_list;
+#endif
+
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group		*sched_task_group;
 #endif
@@ -900,6 +1042,9 @@ struct task_struct {
 
 	/* CLONE_CHILD_CLEARTID: */
 	int __user			*clear_child_tid;
+
+	/* PF_IO_WORKER */
+	void				*pf_io_worker;
 
 	u64				utime;
 	u64				stime;
@@ -1220,6 +1365,10 @@ struct task_struct {
 	struct task_delay_info		*delays;
 #endif
 
+#ifdef CONFIG_RECLAIM_ACCT
+	struct reclaim_acct		*reclaim_acct;
+#endif
+
 #ifdef CONFIG_FAULT_INJECTION
 	int				make_it_fail;
 	unsigned int			fail_nth;
@@ -1342,6 +1491,7 @@ struct task_struct {
 	int				pagefault_disabled;
 #ifdef CONFIG_MMU
 	struct task_struct		*oom_reaper_list;
+	struct timer_list		oom_reaper_timer;
 #endif
 #ifdef CONFIG_VMAP_STACK
 	struct vm_struct		*stack_vm_area;
@@ -1356,6 +1506,10 @@ struct task_struct {
 #ifdef CONFIG_SECURITY
 	/* Used by LSM modules for access restriction: */
 	void				*security;
+#endif
+#ifdef CONFIG_BPF_SYSCALL
+	/* Used for BPF run context */
+	struct bpf_run_ctx		*bpf_ctx;
 #endif
 
 #ifdef CONFIG_GCC_PLUGIN_STACKLEAK
@@ -1387,6 +1541,13 @@ struct task_struct {
 	ANDROID_KABI_RESERVE(7);
 	ANDROID_KABI_RESERVE(8);
 
+#ifdef CONFIG_ACCESS_TOKENID
+	u64				token;
+	u64				ftoken;
+#endif
+#ifdef CONFIG_QOS_CTRL
+	struct qos_task_struct qts;
+#endif
 	/*
 	 * New fields for task_struct should be added above here, so that
 	 * they are included in the randomized portion of task_struct.
@@ -1687,6 +1848,7 @@ current_restore_flags(unsigned long orig_flags, unsigned long flags)
 }
 
 extern int cpuset_cpumask_can_shrink(const struct cpumask *cur, const struct cpumask *trial);
+<<<<<<< HEAD
 extern int task_can_attach(struct task_struct *p, const struct cpumask *cs_effective_cpus);
 
 #ifdef CONFIG_RT_SOFTINT_OPTIMIZATION
@@ -1698,6 +1860,11 @@ static inline bool cpupri_check_rt(void)
 }
 #endif
 
+=======
+extern int task_can_attach(struct task_struct *p);
+extern int dl_bw_alloc(int cpu, u64 dl_bw);
+extern void dl_bw_free(int cpu, u64 dl_bw);
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 #ifdef CONFIG_SMP
 extern void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask);
 extern int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask);

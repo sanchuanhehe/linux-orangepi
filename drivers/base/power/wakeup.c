@@ -1013,6 +1013,7 @@ void pm_system_irq_wakeup(unsigned int irq_number)
 
 	raw_spin_unlock_irqrestore(&wakeup_irq_lock, flags);
 
+<<<<<<< HEAD
 	if (irq_number) {
 		struct irq_desc *desc;
 		const char *name = "null";
@@ -1025,8 +1026,15 @@ void pm_system_irq_wakeup(unsigned int irq_number)
 
 		log_irq_wakeup_reason(irq_number);
 		pr_warn("%s: %d triggered %s\n", __func__, irq_number, name);
+=======
+	if (irq_number)
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 		pm_system_wakeup();
-	}
+}
+
+unsigned int pm_wakeup_irq(void)
+{
+	return wakeup_irq[0];
 }
 
 unsigned int pm_wakeup_irq(void)

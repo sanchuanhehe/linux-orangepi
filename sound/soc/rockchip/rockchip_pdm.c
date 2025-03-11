@@ -791,6 +791,7 @@ static int rockchip_pdm_runtime_resume(struct device *dev)
 		goto err_clk;
 
 	ret = clk_prepare_enable(pdm->hclk);
+<<<<<<< HEAD
 	if (ret)
 		goto err_hclk;
 
@@ -803,6 +804,13 @@ static int rockchip_pdm_runtime_resume(struct device *dev)
 	rockchip_pdm_rxctrl(pdm, 0);
 
 	rockchip_pdm_pinctrl_select_clk_state(dev);
+=======
+	if (ret) {
+		clk_disable_unprepare(pdm->clk);
+		dev_err(pdm->dev, "hclock enable failed %d\n", ret);
+		return ret;
+	}
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
 
 	return 0;
 

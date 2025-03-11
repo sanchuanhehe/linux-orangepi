@@ -16,3 +16,9 @@ are configurable at compile, boot or run time.
    multihit.rst
    special-register-buffer-data-sampling.rst
    processor_mmio_stale_data.rst
+<<<<<<< HEAD
+=======
+   gather_data_sampling.rst
+   srso
+   reg-file-data-sampling
+>>>>>>> ohos/OpenHarmony-5.0.2-Release
